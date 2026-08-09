@@ -1,0 +1,17 @@
+# Databricks App · asistente_reabastecimiento
+# From Zero to Hero (retail) — Módulo 7
+#
+# Configura las tres variables con los valores del participante:
+#   Z2H_CATALOGO      → tu catálogo
+#   Z2H_SCHEMA        → tu schema (retail_<tu_usuario>)
+#   Z2H_WAREHOUSE_ID  → el ID de un SQL warehouse (menú SQL Warehouses → tu warehouse → ID)
+
+command: ["streamlit", "run", "app.py"]
+
+env:
+  - name: "Z2H_CATALOGO"
+    value: "CAMBIAR_por_tu_catalogo"      # ej: mi_catalogo
+  - name: "Z2H_SCHEMA"
+    value: "CAMBIAR_por_tu_schema"        # ej: retail_<tu_usuario>
+  - name: "Z2H_WAREHOUSE_ID"
+    value: "CAMBIAR_por_el_id_del_warehouse"  # SQL Warehouses → tu warehouse → copia el ID
