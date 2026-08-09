@@ -17,8 +17,12 @@ negocio realista, en español, pensado para personas **sin experiencia previa** 
 
 | Carpeta | Caso | Estado |
 |---|---|---|
+| [`verificacion-ambiente/`](./verificacion-ambiente) | **Módulo 0** — verifica que tu workspace está listo (corre esto primero) | ✅ |
 | [`retail/`](./retail) | **Retail — pronóstico de ventas** con AI Functions (`ai_forecast`) | ✅ Completo y validado |
 | `fraud-detection/` | Financiero — detección de fraude con MLflow | 🔜 Próximamente |
+
+> 👉 **Empieza por [`verificacion-ambiente/`](./verificacion-ambiente)** para confirmar permisos
+> antes del taller. Luego elige un caso (por ahora, `retail/`).
 
 ## Ruta de los módulos (retail)
 
