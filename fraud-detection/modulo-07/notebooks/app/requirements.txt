@@ -1,0 +1,9 @@
+# La App llama al MODELO por REST (serving endpoint) → no necesita mlflow/scikit-learn/numpy,
+# y así evita todos los problemas de versiones de librerías.
+# Para los KPIs lee las tablas gold vía SQL warehouse (databricks-sql-connector).
+streamlit
+requests
+databricks-sdk
+databricks-sql-connector
+pyarrow
+pandas

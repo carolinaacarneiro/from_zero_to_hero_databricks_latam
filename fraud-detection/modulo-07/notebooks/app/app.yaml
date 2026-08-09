@@ -1,0 +1,21 @@
+# Databricks App · revisor_transacciones
+# From Zero to Hero — Módulo 7
+#
+# La App consulta un Model Serving endpoint (el modelo de fraude del Módulo 6) para calificar,
+# y lee las tablas gold para mostrar KPIs.
+#   Z2H_ENDPOINT      → nombre de tu serving endpoint (menú Serving)
+#   Z2H_CATALOGO      → tu catálogo
+#   Z2H_SCHEMA        → tu schema (fin_<tu_usuario>)
+#   Z2H_WAREHOUSE_ID  → ID de un SQL warehouse (SQL Warehouses → tu warehouse → ID)
+
+command: ["streamlit", "run", "app.py"]
+
+env:
+  - name: "Z2H_ENDPOINT"
+    value: "zerotohero"                    # CAMBIAR por el nombre de tu endpoint
+  - name: "Z2H_CATALOGO"
+    value: "CAMBIAR_por_tu_catalogo"       # ej: workspace
+  - name: "Z2H_SCHEMA"
+    value: "CAMBIAR_por_tu_schema"         # ej: fin_<tu_usuario>
+  - name: "Z2H_WAREHOUSE_ID"
+    value: "CAMBIAR_por_el_id_del_warehouse"

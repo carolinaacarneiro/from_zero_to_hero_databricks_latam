@@ -19,30 +19,32 @@ negocio realista, en español, pensado para personas **sin experiencia previa** 
 |---|---|---|
 | [`verificacion-ambiente/`](./verificacion-ambiente) | **Módulo 0** — verifica que tu workspace está listo (corre esto primero) | ✅ |
 | [`retail/`](./retail) | **Retail — pronóstico de ventas** con AI Functions (`ai_forecast`) | ✅ Completo y validado |
-| `fraud-detection/` | Financiero — detección de fraude con MLflow | 🔜 Próximamente |
+| [`fraud-detection/`](./fraud-detection) | **Financiero — detección de fraude** con MLflow + Model Serving | ✅ Completo y validado |
 
 > 👉 **Empieza por [`verificacion-ambiente/`](./verificacion-ambiente)** para confirmar permisos
-> antes del taller. Luego elige un caso (por ahora, `retail/`).
+> antes del taller. Luego elige un caso: [`retail/`](./retail) o [`fraud-detection/`](./fraud-detection).
 
-## Ruta de los módulos (retail)
+## Ruta de los módulos
 
-| Módulo | Tema | Qué construyes |
-|---|---|---|
-| **1** | Lakehouse 101 | Tu primera tabla Delta + time travel |
-| **2** | Ingesta | Capa **bronze** con Auto Loader (incremental) |
-| **3** | Pipeline | **silver** y **gold** con Lakeflow Declarative Pipelines + calidad |
-| **4** | Gobierno | Tags, row filter, column masking, lineage (Unity Catalog) |
-| **5** | Orquestación | Un **job** programado que encadena todo |
-| **6** | AI Functions | **Pronóstico de ventas** con `ai_forecast` (solo SQL) |
-| **7** | Consumo | **Dashboard** + **Genie** + una **App** de reabastecimiento |
+Los dos casos siguen la misma ruta de 7 módulos; solo cambian el dato y el enfoque de ML.
 
-Cada módulo empieza con `00_generar_datos` (Módulo 1) que crea el dataset sintético. Córrelo una
+| Módulo | Tema | Retail | Fraude |
+|---|---|---|---|
+| **1** | Lakehouse 101 | tu primera tabla Delta + time travel | *(igual)* |
+| **2** | Ingesta | capa **bronze** con Auto Loader (incremental) | *(igual)* |
+| **3** | Pipeline | **silver** y **gold** con Lakeflow Declarative Pipelines + calidad | *(igual)* |
+| **4** | Gobierno | tags, row filter, column masking, lineage (UC) | *(igual)* |
+| **5** | Orquestación | un **job** programado que encadena todo | *(igual)* |
+| **6** | ML | **pronóstico** con `ai_forecast` (solo SQL) | **modelo** con MLflow + **Serving Endpoint** |
+| **7** | Consumo | **Dashboard + Genie + App** de reabastecimiento | **Dashboard + Genie + App** que consulta el endpoint |
+
+Cada caso empieza con `00_generar_datos` (Módulo 1) que crea el dataset sintético. Córrelo una
 sola vez y sigue los notebooks en orden.
 
 ## Cómo usarlo
 
-1. Importa la carpeta del caso (`retail/`) a tu workspace de Databricks.
-2. Abre `retail/modulo-01/notebooks/00_generar_datos` y ejecútalo (crea catálogo, schema, volumen
+1. Importa la carpeta del caso (`retail/` o `fraud-detection/`) a tu workspace de Databricks.
+2. Abre `modulo-01/notebooks/00_generar_datos` y ejecútalo (crea catálogo, schema, volumen
    y los datos sintéticos).
 3. Sigue los módulos 1 → 7 en orden. Cada notebook indica de dónde viene y a dónde va.
 
