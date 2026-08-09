@@ -319,30 +319,40 @@ print("   detrás. No montas servidores: subes el código y Databricks la sirve.
 # MAGIC > misma consulta funciona en el notebook (eres tú) y falla en la App (es el robot).
 # MAGIC
 # MAGIC ### Qué hacer
-# MAGIC 1. Busca el **nombre del service principal** de tu App: menú **Apps → tu app →** pestaña
-# MAGIC    **Authorization** (o **Configuration**). Es un ID tipo `xxxxxxxx-xxxx-xxxx-...`.
-# MAGIC 2. Pégalo en la celda de abajo (`SP_DE_LA_APP`) y ejecútala: te imprime los `GRANT` exactos.
-# MAGIC 3. Copia esos `GRANT` a una celda `%sql` (o al editor SQL) y ejecútalos.
-# MAGIC 4. Además, dale al mismo service principal permiso **CAN USE** sobre tu **SQL warehouse**:
+# MAGIC 1. Copia el **App ID** de tu App (es el mismo valor que su service principal):
+# MAGIC    menú **Apps → tu app**, en la pestaña **Overview / Configuration** aparece como
+# MAGIC    **App ID** (o **Client ID**), un UUID tipo `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`.
+# MAGIC    *(El mismo valor sale en la pestaña **Authorization** como "service principal".)*
+# MAGIC 2. Pégalo en la celda de abajo (`SP_DE_LA_APP`) y **ejecútala**: aplica los permisos por ti.
+# MAGIC 3. Además, dale al mismo service principal permiso **CAN USE** sobre tu **SQL warehouse**:
 # MAGIC    **SQL Warehouses → tu warehouse → Permissions → Add → (el service principal) → Can use**.
-# MAGIC 5. Recarga la App. Ahora sí lee las tablas.
+# MAGIC 4. Recarga la App. Ahora sí lee las tablas.
+# MAGIC
+# MAGIC > 💡 La celda ejecuta cada `GRANT` por separado con `spark.sql(...)`. Un solo `%sql` con
+# MAGIC > varios `GRANT` pegados da error de sintaxis (una celda SQL corre **un** statement) — por
+# MAGIC > eso lo hacemos desde Python, un comando a la vez.
 
 # COMMAND ----------
 
-# 📝 Pega aquí el service principal de tu App (lo ves en Apps → tu app → Authorization)
-SP_DE_LA_APP = "PEGA_AQUI_EL_SERVICE_PRINCIPAL"
+# 📝 Pega aquí el App ID de tu App (Apps → tu app → Overview → App ID).
+#    Es el mismo UUID que su service principal.
+SP_DE_LA_APP = "PEGA_AQUI_EL_APP_ID"
 
-if SP_DE_LA_APP == "PEGA_AQUI_EL_SERVICE_PRINCIPAL":
-    print("⚠️  Primero pega el service principal de tu App arriba y vuelve a ejecutar.")
-    print("    Lo encuentras en: Apps → tu app → pestaña Authorization / Configuration.")
+if SP_DE_LA_APP == "PEGA_AQUI_EL_APP_ID":
+    print("⚠️  Primero pega el App ID de tu App arriba y vuelve a ejecutar.")
+    print("    Lo encuentras en: Apps → tu app → Overview / Configuration → App ID (un UUID).")
 else:
-    print("Copia estos GRANT a una celda %sql (o al editor SQL) y ejecútalos:\n")
-    print("=" * 78)
-    print(f"GRANT USE CATALOG ON CATALOG `{catalogo}` TO `{SP_DE_LA_APP}`;")
-    print(f"GRANT USE SCHEMA ON SCHEMA `{catalogo}`.`{schema}` TO `{SP_DE_LA_APP}`;")
-    print(f"GRANT SELECT ON SCHEMA `{catalogo}`.`{schema}` TO `{SP_DE_LA_APP}`;")
-    print("=" * 78)
-    print("\nY no olvides: SQL Warehouses → tu warehouse → Permissions → Can use → ese mismo SP.")
+    grants = [
+        f"GRANT USE CATALOG ON CATALOG `{catalogo}` TO `{SP_DE_LA_APP}`",
+        f"GRANT USE SCHEMA ON SCHEMA `{catalogo}`.`{schema}` TO `{SP_DE_LA_APP}`",
+        f"GRANT SELECT ON SCHEMA `{catalogo}`.`{schema}` TO `{SP_DE_LA_APP}`",
+    ]
+    for g in grants:
+        spark.sql(g)
+        print(f"✅ {g}")
+    print("\n🎉 Permisos de tablas aplicados.")
+    print("👉 Falta 1 paso manual: SQL Warehouses → tu warehouse → Permissions → Can use → "
+          "ese mismo service principal. Luego recarga la App.")
 
 # COMMAND ----------
 

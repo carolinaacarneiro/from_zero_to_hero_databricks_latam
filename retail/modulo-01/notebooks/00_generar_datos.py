@@ -48,14 +48,16 @@
 # MAGIC
 # MAGIC | Campo | Qué poner |
 # MAGIC |---|---|
-# MAGIC | **catalogo** | El catálogo donde quieres trabajar. Si tu organización te asignó uno, escríbelo |
+# MAGIC | **catalogo** | El catálogo donde quieres trabajar. Se propone uno que ya existe |
 # MAGIC | **schema** | Tu schema personal. Se propone uno derivado de tu usuario |
 # MAGIC
-# MAGIC **Si el catálogo o el schema no existen, el notebook los crea.**
+# MAGIC **El schema se crea si no existe. El catálogo debe existir de antemano** (usamos uno que ya
+# MAGIC esté disponible).
 # MAGIC
-# MAGIC > 💡 En muchos workspaces corporativos **no se puede crear catálogos**. Si eso pasa, el
-# MAGIC > notebook te lo dice con claridad y te muestra los catálogos donde **sí** puedes
-# MAGIC > trabajar, para que elijas uno y vuelvas a ejecutar.
+# MAGIC > 💡 **Free Edition / muchos workspaces corporativos:** casi siempre **no se pueden crear
+# MAGIC > catálogos**. En Free Edition se usa el catálogo **`workspace`**. Por eso proponemos por
+# MAGIC > defecto un catálogo que **ya existe** — no intentamos crear uno nuevo. Si el que quieres no
+# MAGIC > aparece, escríbelo, pero tiene que existir ya.
 
 # COMMAND ----------
 
@@ -75,18 +77,23 @@ _ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
 _disponibles = [r[0] for r in spark.sql("SHOW CATALOGS").collect()
                 if r[0].lower() not in _ocultos]
 
-dbutils.widgets.text("catalogo", "z2h", "1 · Catálogo")
+# Catálogo por defecto: 'workspace' si existe (es el de Free Edition y el más común en UC);
+# si no, el primero disponible. NO proponemos crear uno nuevo — casi ningún workspace lo permite.
+_cat_default = "workspace" if "workspace" in _disponibles else (_disponibles[0] if _disponibles else "workspace")
+
+dbutils.widgets.text("catalogo", _cat_default, "1 · Catálogo")
 dbutils.widgets.text("schema", _schema_sugerido, "2 · Schema (tu espacio personal)")
 
 print("👆 Ya aparecieron los dos campos ARRIBA de este notebook.\n")
-print(f"   Usuario          : {_usuario}")
-print(f"   Schema propuesto : {_schema_sugerido}")
+print(f"   Usuario           : {_usuario}")
+print(f"   Catálogo propuesto: {_cat_default}")
+print(f"   Schema propuesto  : {_schema_sugerido}")
 print()
-print("📦 Catálogos que ya existen en este workspace:")
+print("📦 Catálogos que ya existen en este workspace (elige uno de estos):")
 for c in _disponibles:
     print(f"     · {c}")
 print()
-print("Puedes usar uno de esos, o dejar 'z2h' para que el notebook intente crearlo.")
+print("💡 En Free Edition usa 'workspace'. El notebook NO crea catálogos: usa uno que ya exista.")
 print("Cuando estés listo, sigue con la celda B.")
 
 # COMMAND ----------

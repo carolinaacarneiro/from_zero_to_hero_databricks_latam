@@ -141,9 +141,9 @@ from datetime import datetime, timezone
 # Crear catálogos requiere permisos que la mayoría de los workspaces corporativos
 # no dan, y no hace falta para el taller.
 #
-CATALOGO = ""              # ¿ya sabes cuál usar? escríbelo acá. Vacío = automático.
-CREAR_CATALOGO = False     # ponlo en True solo si quieres que intente crear 'z2h'
-CATALOGO_PREFERIDO = "z2h" # se usa si ya existe (o si CREAR_CATALOGO = True)
+CATALOGO = ""                    # ¿ya sabes cuál usar? escríbelo acá. Vacío = automático.
+CREAR_CATALOGO = False           # casi siempre no se pueden crear catálogos; déjalo en False
+CATALOGO_PREFERIDO = "workspace" # 'workspace' es el de Free Edition y el más común en UC
 # ─────────────────────────────────────────────────────────────────────────────
 
 resultados = []   # (clave, etiqueta, estado, detalle, arreglo)
@@ -249,9 +249,9 @@ print("Catálogos visibles:", detectar_edicion())
 def elegir_catalogo():
     """Encuentra un catálogo donde el participante pueda crear schemas.
 
-    Orden: (1) el que se fijó a mano arriba · (2) 'z2h' si YA existe · (3) el primero
-    de la lista donde CREATE SCHEMA funcione de verdad. Solo intenta *crear* 'z2h' si
-    CREAR_CATALOGO = True.
+    Orden: (1) el que se fijó a mano arriba · (2) CATALOGO_PREFERIDO ('workspace') si YA
+    existe · (3) el primero de la lista donde CREATE SCHEMA funcione de verdad. Solo intenta
+    *crear* el preferido si CREAR_CATALOGO = True (rara vez se puede).
 
     Se comprueba creando y borrando un schema, no leyendo permisos: en muchos
     workspaces el catálogo es visible pero no se puede escribir en él, y eso solo se
