@@ -224,13 +224,16 @@
 # MAGIC 1. **Default location for data assets** (botón *Edit catalog and schema*) — es **dónde
 # MAGIC    se publican** tus tablas:
 # MAGIC    - **Default catalog**: tu catálogo · **Default schema**: tu schema.
-# MAGIC 2. **Settings → Configuration** (Advanced) — agrega **un** parámetro para que el pipeline
-# MAGIC    encuentre tu volumen `raw`:
-# MAGIC    - clave `z2h.schema`  ·  valor: **tu schema** (el mismo de arriba).
+# MAGIC 2. **Settings → Configuration** (Advanced) — agrega **dos** parámetros para que el
+# MAGIC    pipeline sepa dónde está tu volumen `raw`:
+# MAGIC    - clave `z2h.catalogo`  ·  valor: **tu catálogo**
+# MAGIC    - clave `z2h.schema`    ·  valor: **tu schema**
+# MAGIC    (los mismos que pusiste arriba).
 # MAGIC
-# MAGIC > ⚠️ **¿Por qué el paso 2?** Dentro del pipeline, el **Default catalog sí** es visible desde
-# MAGIC > el código, pero el **Default schema NO**. Por eso el schema se declara además en
-# MAGIC > Configuration (`z2h.schema`). Es un campo, en el mismo panel de Settings.
+# MAGIC > ⚠️ **¿Por qué el paso 2?** El Default location del paso 1 controla dónde se PUBLICAN
+# MAGIC > las tablas, pero desde el código del pipeline el **Default schema NO es visible** (el
+# MAGIC > catálogo sí, pero por consistencia declaramos ambos). Por eso se declaran en
+# MAGIC > Configuration. Son dos campos, en el mismo panel de Settings.
 # MAGIC
 # MAGIC ## 4.4 · Ejecuta
 # MAGIC Presiona **Run pipeline** (arriba a la derecha). Tarda 1–2 minutos en arrancar.
@@ -257,8 +260,9 @@ print("En la UI del pipeline, configura:\n")
 print("  1) Default location for data assets (Edit catalog and schema):")
 print(f"       Default catalog : {catalogo}")
 print(f"       Default schema  : {schema}")
-print("  2) Settings → Configuration (Advanced), agrega este parámetro:")
-print(f"       z2h.schema = {schema}")
+print("  2) Settings → Configuration (Advanced), agrega estos dos parámetros:")
+print(f"       z2h.catalogo = {catalogo}")
+print(f"       z2h.schema   = {schema}")
 print("\nCon eso el pipeline publica en tu schema y encuentra tu volumen")
 print("raw. Presiona 'Run pipeline'.")
 
