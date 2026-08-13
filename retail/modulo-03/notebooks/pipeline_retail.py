@@ -39,26 +39,35 @@ import dlt
 from pyspark.sql import functions as F
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ¿Dónde están los archivos crudos?
-#
-# El pipeline usa el CATÁLOGO y el SCHEMA que declaraste en la UI del pipeline, en
-# "Default location for data assets" (Default catalog / Default schema). Son los mismos
-# donde el pipeline escribe sus tablas — y donde vive tu volumen `raw`. No se infiere nada:
-# tú los defines en la configuración del pipeline.
+# ¿Dónde están los archivos crudos? El pipeline necesita tu catálogo y tu schema.
+# El CATÁLOGO se lee solo del Default catalog del pipeline. El SCHEMA hay que declararlo en
+# Settings -> Configuration como  z2h.schema = <tu_schema>  (el Default schema del pipeline
+# NO es visible desde el código). Ver el guía 03_guia_pipeline, Paso 4.
 # ═══════════════════════════════════════════════════════════════════════════
 
-_CATALOGO = spark.sql("SELECT current_catalog()").collect()[0][0]
-_SCHEMA = spark.sql("SELECT current_schema()").collect()[0][0]
+def _conf(clave):
+    try:
+        v = spark.conf.get(clave)
+        return v.strip() if v else ""
+    except Exception:
+        return ""
 
-# red de seguridad: si el default quedó sin configurar (hive_metastore/default), avisa claro
+
+# Lo más confiable en un pipeline: declararlo en Settings -> Configuration
+#   z2h.catalogo = <tu_catálogo>   ·   z2h.schema = <tu_schema>
+# Si no está, intenta leer el Default catalog/schema del pipeline (no siempre disponible).
+_CATALOGO = _conf("z2h.catalogo") or spark.sql("SELECT current_catalog()").collect()[0][0]
+_SCHEMA = _conf("z2h.schema")
+if not _SCHEMA:
+    _s = spark.sql("SELECT current_schema()").collect()[0][0]
+    _SCHEMA = "" if (not _s or _s.lower() == "default") else _s
+
 if (not _CATALOGO or not _SCHEMA
-        or _CATALOGO.lower() in ("hive_metastore", "spark_catalog")
-        or _SCHEMA.lower() == "default"):
+        or _CATALOGO.lower() in ("hive_metastore", "spark_catalog")):
     raise Exception(
-        f"El destino del pipeline no está configurado (catálogo='{_CATALOGO}', "
-        f"schema='{_SCHEMA}'). En la UI del pipeline, define 'Default catalog' y "
-        f"'Default schema' con tus valores (los mismos del M1/M2) en "
-        f"'Default location for data assets'."
+        f"Falta el destino del pipeline (catálogo='{_CATALOGO}', schema='{_SCHEMA}'). "
+        f"En Settings -> Configuration del pipeline agrega 'z2h.catalogo' y 'z2h.schema' "
+        f"con tus valores (los mismos del M1/M2)."
     )
 
 RAW = f"/Volumes/{_CATALOGO}/{_SCHEMA}/raw"

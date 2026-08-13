@@ -217,20 +217,23 @@
 # MAGIC > 💡 Las líneas `# Databricks notebook source` y `# MAGIC %md` quedan como comentarios
 # MAGIC > inofensivos. No hace falta quitarlas.
 # MAGIC
-# MAGIC ## 4.3 · Configura el destino (con TUS valores)
-# MAGIC El pipeline **no adivina** dónde trabajas: usa el **Default catalog** y **Default schema**
-# MAGIC que defines en la UI del pipeline. Son los **mismos** catálogo y schema de siempre (los
-# MAGIC del M1/M2), y de ahí el pipeline sabe también dónde está tu volumen `raw`.
+# MAGIC ## 4.3 · Configura el destino (con TUS valores) — DOS lugares
+# MAGIC El pipeline **no adivina** dónde trabajas. Con tus valores (los mismos del M1/M2),
+# MAGIC configura **dos cosas** en la UI del pipeline:
 # MAGIC
-# MAGIC ## 4.4 · Elige el destino y ejecuta
-# MAGIC En la UI del pipeline, en **"Default location for data assets"** (botón *Edit catalog and
-# MAGIC schema*):
-# MAGIC - **Default catalog**: tu catálogo.
-# MAGIC - **Default schema**: tu schema.
-# MAGIC - Presiona **Run pipeline** (arriba a la derecha). Tarda 1–2 minutos en arrancar.
+# MAGIC 1. **Default location for data assets** (botón *Edit catalog and schema*) — es **dónde
+# MAGIC    se publican** tus tablas:
+# MAGIC    - **Default catalog**: tu catálogo · **Default schema**: tu schema.
+# MAGIC 2. **Settings → Configuration** (Advanced) — agrega **un** parámetro para que el pipeline
+# MAGIC    encuentre tu volumen `raw`:
+# MAGIC    - clave `z2h.schema`  ·  valor: **tu schema** (el mismo de arriba).
 # MAGIC
-# MAGIC > 💡 No necesitas configurar nada más: el pipeline lee ese Default catalog/schema
-# MAGIC > automáticamente. La celda de abajo solo te recuerda qué valores escribir.
+# MAGIC > ⚠️ **¿Por qué el paso 2?** Dentro del pipeline, el **Default catalog sí** es visible desde
+# MAGIC > el código, pero el **Default schema NO**. Por eso el schema se declara además en
+# MAGIC > Configuration (`z2h.schema`). Es un campo, en el mismo panel de Settings.
+# MAGIC
+# MAGIC ## 4.4 · Ejecuta
+# MAGIC Presiona **Run pipeline** (arriba a la derecha). Tarda 1–2 minutos en arrancar.
 
 # COMMAND ----------
 
@@ -248,10 +251,13 @@ if not catalogo or not schema:
         "usaste en el M1/M2) y vuelve a correr esta celda.\n"
     )
 
-print("En la UI del pipeline → 'Default location for data assets', pon:\n")
-print(f"     Default catalog : {catalogo}")
-print(f"     Default schema  : {schema}")
-print("\nEso es todo. El pipeline usa ese destino para escribir y para encontrar tu volumen")
+print("En la UI del pipeline, configura:\n")
+print("  1) Default location for data assets (Edit catalog and schema):")
+print(f"       Default catalog : {catalogo}")
+print(f"       Default schema  : {schema}")
+print("  2) Settings → Configuration (Advanced), agrega este parámetro:")
+print(f"       z2h.schema = {schema}")
+print("\nCon eso el pipeline publica en tu schema y encuentra tu volumen")
 print("raw. Presiona 'Run pipeline'.")
 
 # COMMAND ----------
