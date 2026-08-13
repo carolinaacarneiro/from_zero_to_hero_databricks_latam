@@ -237,20 +237,22 @@
 
 # COMMAND ----------
 
-# ═══ Recordatorio de qué poner en la UI del pipeline (los mismos del M1/M2) ══
-# Campos VACÍOS: tú declaras dónde trabajas. No se infiere nada.
+# ═══ CELDA A · crea los campos ════════════════════════════════════════════
+# Corre esta celda. Aparecen dos campos ARRIBA. Escribe en ellos tu catálogo y tu schema
+# (los mismos del M1/M2) y luego corre la CELDA B de abajo.
 dbutils.widgets.text("catalogo", "", "1 · Catálogo")
 dbutils.widgets.text("schema",   "", "2 · Schema")
+print("👆 Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba, y corre la CELDA B.")
 
-catalogo = dbutils.widgets.get("catalogo").strip()
-schema = dbutils.widgets.get("schema").strip()
+# COMMAND ----------
 
-if not catalogo or not schema:
-    raise Exception(
-        "\n❌ Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba (los mismos que "
-        "usaste en el M1/M2) y vuelve a correr esta celda.\n"
-    )
+# ═══ CELDA B · lee lo que escribiste y te recuerda qué poner en la UI ═════
+# Esta celda SOLO imprime un recordatorio (no configura nada). Si dejas los campos vacíos,
+# muestra un marcador de posición — no bloquea.
+catalogo = dbutils.widgets.get("catalogo").strip() or "<tu_catálogo>"
+schema = dbutils.widgets.get("schema").strip() or "<tu_schema>"
 
+print("👉 Esto es un RECORDATORIO — configúralo en la UI del pipeline, no aquí.\n")
 print("En la UI del pipeline, configura:\n")
 print("  1) Default location for data assets (Edit catalog and schema):")
 print(f"       Default catalog : {catalogo}")
