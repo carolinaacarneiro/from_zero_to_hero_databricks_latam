@@ -1,170 +1,115 @@
 # Databricks notebook source
 # MAGIC %md
 # MAGIC # Databricks: From Zero to Hero
-# MAGIC # 🔮 Módulo 6 · Pronóstico de ventas con AI Functions
+# MAGIC # 🔮 Módulo 6 · Pronóstico de ventas con Machine Learning
 # MAGIC
-# MAGIC Vas a pronosticar las ventas de los próximos 90 días —en dólares y en
-# MAGIC unidades— **sin entrenar ningún modelo a mano**. Solo SQL.
+# MAGIC Vas a **entrenar tu propio modelo** para pronosticar las ventas de los próximos 90 días
+# MAGIC —en dólares y en unidades— por país, y lo vas a **gobernar con MLflow y Unity Catalog**.
 # MAGIC
 # MAGIC ## Cómo trabajar
-# MAGIC - Ejecuta celda por celda. Donde dice **📝 TU TURNO**, completas una línea.
+# MAGIC - Ejecuta celda por celda. El código ya está listo — el foco es **entender el flujo de ML**.
 # MAGIC - 🙋 Trabado más de 3 minutos: levanta la mano.
 # MAGIC
 # MAGIC ## De dónde venimos
 # MAGIC Tienes la serie de tiempo `gold_ventas_diarias` (M3): ventas por día, país y categoría, con
-# MAGIC tendencia y estacionalidad reales. Hoy la proyectas al futuro.
+# MAGIC tendencia y estacionalidad reales. Hoy la proyectas al futuro con un modelo entrenado por ti.
 # MAGIC
-# MAGIC ## El diferencial de este módulo: **AI Functions**
-# MAGIC Pronosticar solía requerir un científico de datos, una librería, entrenar y evaluar un
-# MAGIC modelo. Databricks tiene **`ai_forecast`**: una **función de SQL** que hace el pronóstico
-# MAGIC por ti. Le das una serie de tiempo y te devuelve la proyección con intervalos de
-# MAGIC confianza. **Cualquiera que sepa un `SELECT` puede pronosticar.**
+# MAGIC ## El flujo de este módulo — igual que un proyecto de ML real
+# MAGIC Pronosticar es un problema de **machine learning**: le enseñas a un modelo el patrón
+# MAGIC histórico (tendencia + estacionalidad) y le pides que lo proyecte. El camino:
+# MAGIC
+# MAGIC | Paso | Qué haces |
+# MAGIC |---|---|
+# MAGIC | **Features** | conviertes cada fecha en señales que el modelo entiende (tendencia, estacionalidad) |
+# MAGIC | **Entrenar** | un modelo `scikit-learn` aprende el patrón; **MLflow** registra la corrida |
+# MAGIC | **Registrar** | el modelo queda en **Unity Catalog** con alias `@champion` |
+# MAGIC | **Pronosticar** | cargas el modelo por su alias y proyectas 90 días → tabla gold |
 # MAGIC
 # MAGIC > ⚠️ **Material de aprendizaje — no es production-ready.** Datos 100% sintéticos.
 # MAGIC >
-# MAGIC > ⚙️ **Requisitos de `ai_forecast` (léelo antes de correr el Paso 2):**
-# MAGIC > 1. Un **SQL warehouse Pro o Serverless** (no un warehouse Classic, no un cluster común).
-# MAGIC > 2. Usamos la **versión 1** de la función (`version => '1'`), que es la disponible por defecto.
-# MAGIC >    La *versión 2* añade cosas (feriados, covariables) pero exige el preview «Predictive AI
-# MAGIC >    Functions»; para el taller, la v1 basta y evita ese requisito.
-# MAGIC >
-# MAGIC > Si aun así ves el error
-# MAGIC > `UNSUPPORTED_FEATURE.AI_FUNCTION_PREVIEW ... ai_forecast is in preview and currently
-# MAGIC > disabled`, tu workspace tiene la función deshabilitada del todo. Pídele a un admin/TA que
-# MAGIC > active «Predictive AI Functions» en **Settings → Previews** (toma segundos), o usa el
-# MAGIC > **Plan B sin `ai_forecast`** del Paso 4B, que produce el mismo resultado para que puedas
-# MAGIC > seguir con el dashboard y la app del Módulo 7.
+# MAGIC > 💡 **Solo usa librerías estándar** (`scikit-learn`, `mlflow`, `pandas`) — corre en
+# MAGIC > cualquier ambiente, incluida la Free Edition. No necesitas instalar nada.
 # MAGIC >
 # MAGIC > 💡 Pronosticar una serie de tiempo es de cualquier industria: demanda de energía, tickets
-# MAGIC > de soporte, tráfico web, ocupación hotelera. Cambia el dato, no la función.
+# MAGIC > de soporte, tráfico web, ocupación hotelera. Cambia el dato, no el método.
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 0 · Tu espacio
+# MAGIC # Paso 1 · Declara tu catálogo y tu schema
+# MAGIC
+# MAGIC **Corre la celda de abajo una vez** para que aparezcan dos campos arriba del notebook.
+# MAGIC Luego **escribe en ellos el catálogo y el schema donde estás trabajando** — los
+# MAGIC **mismos** que declaraste en el Módulo 1 y que vienes usando en todos los módulos.
+# MAGIC
+# MAGIC > ⚠️ **No adivinamos nada por ti.** Tú declaras explícitamente dónde trabajas, para que
+# MAGIC > no haya duda de en qué catálogo y schema estás. Si los dejas vacíos, el notebook se
+# MAGIC > detiene y te lo pide.
 
 # COMMAND ----------
 
-import re
+# ═══ Declara aquí tu espacio de trabajo ═══════════════════════════════════
+# Crea los dos campos (arriba). Escribe en ellos tu catálogo y tu schema — los MISMOS
+# de siempre. No se infiere ni se adivina nada: tú decides dónde trabajas.
+dbutils.widgets.text("catalogo", "", "1 · Catálogo")
+dbutils.widgets.text("schema",   "", "2 · Schema")
+
+print("👆 Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba, y sigue con la "
+      "siguiente celda.")
+
+# COMMAND ----------
+
+# ═══ Lee y valida lo que declaraste ═══════════════════════════════════════
+catalogo = dbutils.widgets.get("catalogo").strip()
+schema = dbutils.widgets.get("schema").strip()
 _usuario = spark.sql("SELECT current_user()").collect()[0][0]
-schema = "retail_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
-_ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-catalogo = None
-for c in [r[0] for r in spark.sql("SHOW CATALOGS").collect() if r[0].lower() not in _ocultos]:
-    try:
-        if schema in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{c}`").collect()]:
-            catalogo = c
-            break
-    except Exception:
-        continue
-if catalogo is None:
-    raise Exception("No encontré tu schema del taller. ¿Corriste los módulos 2 y 3?")
+
+# 1 · no puede estar vacío — obliga a declarar conscientemente
+if not catalogo or not schema:
+    raise Exception(
+        "\n❌ Falta declarar tu espacio de trabajo.\n"
+        "   Escribe el CATÁLOGO y el SCHEMA en los campos de arriba (los mismos que usaste "
+        "en el Módulo 1) y vuelve a correr esta celda.\n"
+    )
+
+# 2 · el catálogo tiene que existir
+catalogos = [r[0] for r in spark.sql("SHOW CATALOGS").collect()]
+if catalogo not in catalogos:
+    _visibles = [c for c in catalogos
+                 if c.lower() not in ("system", "samples", "__databricks_internal", "hive_metastore")]
+    raise Exception(
+        f"\n❌ El catálogo '{catalogo}' no existe o no lo ves.\n"
+        f"   👉 Escribe uno de estos en el campo de arriba:\n"
+        + "".join(f"        · {c}\n" for c in _visibles)
+    )
+
+# 3 · el schema tiene que existir (lo creaste en el Módulo 1)
+schemas = [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{catalogo}`").collect()]
+if schema not in schemas:
+    raise Exception(
+        f"\n❌ El schema '{catalogo}.{schema}' no existe.\n"
+        f"   Corre los módulos anteriores con estos mismos valores primero, o corrige el nombre "
+        f"arriba.\n"
+    )
+
 spark.sql(f"USE `{catalogo}`.`{schema}`")
-print(f"📁 {catalogo}.{schema}")
-print("   Serie base del pronóstico: gold_ventas_diarias")
+
+print(f"👤 Usuario       : {_usuario}")
+print(f"📁 Trabajarás en : {catalogo}.{schema}")
+print("✅ Espacio declarado y verificado. Nadie más toca este schema.")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 1 · Mira la serie que vas a pronosticar
+# MAGIC # Paso 2 · Mira la serie que vas a pronosticar
 # MAGIC
-# MAGIC Primero, prepara la serie **total por día** (sumando todos los países y categorías). Un
-# MAGIC pronóstico necesita **un valor por día**. Esta vista la usaremos varias veces.
+# MAGIC El pronóstico se hace **por país**. Prepara la serie por día y país (la usaremos como
+# MAGIC datos de entrenamiento) y también la total, para verla.
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC CREATE OR REPLACE VIEW serie_total_diaria AS
-# MAGIC SELECT
-# MAGIC     dia,
-# MAGIC     SUM(monto)    AS monto,
-# MAGIC     SUM(unidades) AS unidades
-# MAGIC FROM gold_ventas_diarias
-# MAGIC GROUP BY dia
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC Mírala como gráfico de líneas: **botón + → Visualization → Line**, eje X `dia`, eje Y
-# MAGIC `monto`. Vas a ver la tendencia (sube con el tiempo) y los picos de fin de año.
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT * FROM serie_total_diaria ORDER BY dia
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # Paso 2 · El pronóstico total ⭐
-# MAGIC ## El momento clave del módulo
-# MAGIC
-# MAGIC ## Qué hace `ai_forecast`
-# MAGIC Le pasas una tabla con una serie de tiempo y le dices:
-# MAGIC
-# MAGIC | Argumento | Qué es | Nuestro valor |
-# MAGIC |---|---|---|
-# MAGIC | `TABLE(...)` | la serie histórica | `serie_total_diaria` |
-# MAGIC | `horizon` | hasta qué fecha proyectar | 90 días después del último dato |
-# MAGIC | `time_col` | la columna de fecha | `'dia'` |
-# MAGIC | `value_col` | qué pronosticar (¡puede ser varias!) | `'monto'` y `'unidades'` |
-# MAGIC | `parameters` | ajustes del pronóstico (JSON) | `'{"global_floor": 0}'` — nunca proyectar negativo |
-# MAGIC | `version` | qué versión de la función usar | `'1'` (la disponible por defecto) |
-# MAGIC
-# MAGIC Por cada columna que pronosticas, devuelve tres: `{columna}_forecast` (la proyección),
-# MAGIC `{columna}_upper` y `{columna}_lower` (el rango probable). Así el negocio ve no solo *«se
-# MAGIC venderá X»* sino *«entre X y Y»*.
-# MAGIC
-# MAGIC > 💡 **¿Por qué `global_floor: 0`?** Las ventas y las unidades **nunca son negativas**. Sin
-# MAGIC > ese piso, el modelo podría proyectar un valor bajo cero en un día flojo — y un *«vamos a
-# MAGIC > vender -200 dólares»* no tiene sentido. `global_floor` le pone el piso en 0. *(En la versión
-# MAGIC > 2 esto se llama `positive_only`; en la v1 se hace con este parámetro.)*
-# MAGIC
-# MAGIC Ejecuta la celda. **Con una sola función pronosticas dólares y unidades a la vez.**
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT * FROM AI_FORECAST(
-# MAGIC     TABLE(serie_total_diaria),
-# MAGIC     horizon    => (SELECT DATE_ADD(MAX(dia), 90) FROM serie_total_diaria),
-# MAGIC     time_col   => 'dia',
-# MAGIC     value_col  => ARRAY('monto', 'unidades'),
-# MAGIC     parameters => '{"global_floor": 0}',
-# MAGIC     version    => '1'
-# MAGIC )
-# MAGIC ORDER BY dia
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 🎉 Acabas de pronosticar 90 días con una función de SQL
-# MAGIC
-# MAGIC Mira el resultado como gráfico: eje X `dia`, eje Y `monto_forecast`. Vas a ver la
-# MAGIC proyección continuar la tendencia y la estacionalidad que la serie traía.
-# MAGIC
-# MAGIC Piensa en lo que **no** tuviste que hacer: elegir un algoritmo, separar train/test,
-# MAGIC ajustar hiperparámetros, evaluar métricas. `ai_forecast` se encarga. Eso es una **AI
-# MAGIC Function**: capacidad de IA empaquetada como una función de SQL.
-# MAGIC
-# MAGIC > 💡 `monto_upper` y `monto_lower` son el **intervalo de confianza**: el rango dentro del
-# MAGIC > cual es probable que caiga la venta real. Un pronóstico honesto no da un número mágico,
-# MAGIC > da un rango — y planeas el inventario para el escenario que te convenga.
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # Paso 3 · 📝 TU TURNO — pronóstico por país
-# MAGIC
-# MAGIC El pronóstico total está bien, pero el negocio quiere saber **cuánto venderá cada país**.
-# MAGIC `ai_forecast` lo hace con **un argumento más**: `group_col`. Le dices por qué columna
-# MAGIC agrupar y calcula **una serie independiente por grupo**.
-# MAGIC
-# MAGIC Primero, la serie por día **y país**:
-
-# COMMAND ----------
-
-# MAGIC %sql
+# MAGIC -- la serie por día y país: es lo que el modelo va a aprender
 # MAGIC CREATE OR REPLACE VIEW serie_pais_diaria AS
 # MAGIC SELECT dia, pais, SUM(monto) AS monto, SUM(unidades) AS unidades
 # MAGIC FROM gold_ventas_diarias
@@ -172,75 +117,168 @@ print("   Serie base del pronóstico: gold_ventas_diarias")
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC Ahora completa el `ai_forecast` agregando `group_col => 'pais'`. Reemplaza el `TODO`.
-# MAGIC
-# MAGIC <details>
-# MAGIC <summary>💡 Solución</summary>
-# MAGIC
-# MAGIC <pre>SELECT * FROM AI_FORECAST(
-# MAGIC     TABLE(serie_pais_diaria),
-# MAGIC     horizon   => (SELECT DATE_ADD(MAX(dia), 90) FROM serie_pais_diaria),
-# MAGIC     time_col  => 'dia',
-# MAGIC     value_col => ARRAY('monto', 'unidades'),
-# MAGIC     group_col => 'pais',
-# MAGIC     parameters => '{"global_floor": 0}',
-# MAGIC     version   => '1'
-# MAGIC )
-# MAGIC ORDER BY pais, dia</pre>
-# MAGIC </details>
-
-# COMMAND ----------
-
 # MAGIC %sql
-# MAGIC -- TODO: agrega la línea  group_col => 'pais',  (con su coma) donde se indica, y ejecuta
-# MAGIC SELECT * FROM AI_FORECAST(
-# MAGIC     TABLE(serie_pais_diaria),
-# MAGIC     horizon   => (SELECT DATE_ADD(MAX(dia), 90) FROM serie_pais_diaria),
-# MAGIC     time_col  => 'dia',
-# MAGIC     value_col => ARRAY('monto', 'unidades'),
-# MAGIC     -- TODO: group_col => 'pais',
-# MAGIC     parameters => '{"global_floor": 0}',
-# MAGIC     version   => '1'
-# MAGIC )
-# MAGIC ORDER BY dia
+# MAGIC -- míralas como gráfico de líneas (botón + → Visualization → Line, eje X dia, eje Y monto):
+# MAGIC -- vas a ver la tendencia (sube con el tiempo) y los picos de fin de año (estacionalidad)
+# MAGIC SELECT dia, SUM(monto) AS monto_total FROM serie_pais_diaria GROUP BY dia ORDER BY dia
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC 👀 Con `group_col`, el resultado trae la columna `pais` y una serie proyectada **por cada
-# MAGIC país**. La misma función, escalada de 1 serie a 6, sin escribir un bucle. Cambiando
-# MAGIC `group_col` por `'categoria'` tendrías el pronóstico por categoría; por `'producto_id'`,
-# MAGIC por producto. Es un argumento, no un proyecto.
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # Paso 4 · Guarda el pronóstico para el dashboard
+# MAGIC # Paso 3 · De fechas a *features*
 # MAGIC
-# MAGIC El Módulo 7 (dashboard, Genie y app) necesita el pronóstico **como tabla**. Guardamos el
-# MAGIC pronóstico por país en `gold_pronostico_pais`. Ejecuta la celda (ya está resuelta).
+# MAGIC Un modelo **no entiende una fecha** — entiende números. Así que convertimos cada día en
+# MAGIC **features** que capturan lo que mueve las ventas:
+# MAGIC
+# MAGIC | Feature | Qué captura |
+# MAGIC |---|---|
+# MAGIC | `tendencia` | los días transcurridos desde el inicio → el crecimiento en el tiempo |
+# MAGIC | `sin_anual`, `cos_anual` | la **estacionalidad anual** (los picos de fin de año) |
+# MAGIC | `dia_semana` | el patrón semanal (fines de semana vs. entre semana) |
+# MAGIC | `mes`, `dia_mes` | detalle del calendario |
+# MAGIC | `pais` | cada país tiene su nivel de ventas (lo codificamos con one-hot) |
+# MAGIC
+# MAGIC > 💡 Con estas features, para pronosticar un día futuro **no necesitamos conocer el pasado
+# MAGIC > reciente**: basta la fecha y el país. Eso hace el pronóstico simple y robusto.
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC CREATE OR REPLACE TABLE gold_pronostico_pais AS
-# MAGIC SELECT
-# MAGIC     dia,
-# MAGIC     pais,
-# MAGIC     ROUND(monto_forecast, 2)    AS monto_pronostico,
-# MAGIC     ROUND(monto_lower, 2)       AS monto_min,
-# MAGIC     ROUND(monto_upper, 2)       AS monto_max,
-# MAGIC     ROUND(unidades_forecast, 0) AS unidades_pronostico
-# MAGIC FROM AI_FORECAST(
-# MAGIC     TABLE(serie_pais_diaria),
-# MAGIC     horizon   => (SELECT DATE_ADD(MAX(dia), 90) FROM serie_pais_diaria),
-# MAGIC     time_col  => 'dia',
-# MAGIC     value_col => ARRAY('monto', 'unidades'),
-# MAGIC     group_col => 'pais',
-# MAGIC     parameters => '{"global_floor": 0}',
-# MAGIC     version   => '1'
-# MAGIC )
+import numpy as np
+import pandas as pd
+
+# la serie histórica, a pandas (es pequeña: ~18 meses × países)
+serie = spark.table("serie_pais_diaria").toPandas()
+serie["dia"] = pd.to_datetime(serie["dia"])
+serie = serie.sort_values("dia").reset_index(drop=True)
+
+# origen fijo de la tendencia: el primer día de la serie. Se usa igual para entrenar y para
+# pronosticar, así el número 'tendencia' significa lo mismo en ambos momentos.
+ORIGEN = serie["dia"].min()
+
+
+def construir_features(df):
+    """Convierte (dia, pais) en las señales numéricas que el modelo entiende."""
+    d = pd.to_datetime(df["dia"])
+    doy = d.dt.dayofyear
+    return pd.DataFrame({
+        "tendencia": (d - ORIGEN).dt.days,
+        "sin_anual": np.sin(2 * np.pi * doy / 365.25),
+        "cos_anual": np.cos(2 * np.pi * doy / 365.25),
+        "dia_semana": d.dt.dayofweek,
+        "mes": d.dt.month,
+        "dia_mes": d.dt.day,
+        "pais": df["pais"].values,
+    })
+
+
+X = construir_features(serie)
+y = serie[["monto", "unidades"]]
+print(f"✅ {len(X):,} filas de entrenamiento · features: {list(X.columns)}")
+display(X.head(5))
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Paso 4 · Entrena el modelo y regístralo con MLflow
+# MAGIC
+# MAGIC Un **Random Forest** aprende el patrón de las features. Pronostica **monto y unidades a la
+# MAGIC vez** (es multi-salida). El flujo es el de cualquier proyecto de ML:
+# MAGIC
+# MAGIC 1. Partimos la serie en **train / test por tiempo** (los últimos 60 días son el test) para
+# MAGIC    medir honestamente qué tan bueno es — con datos que el modelo **no** vio.
+# MAGIC 2. **MLflow** registra la corrida sola: parámetros, la métrica **MAPE** (error porcentual
+# MAGIC    medio) y el modelo.
+# MAGIC 3. Reentrenamos con **toda** la serie y **registramos el modelo en Unity Catalog** con el
+# MAGIC    alias `@champion` — queda como objeto gobernado, con versiones y linaje.
+
+# COMMAND ----------
+
+import mlflow
+import mlflow.sklearn
+from mlflow.tracking import MlflowClient
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
+
+mlflow.set_registry_uri("databricks-uc")
+NOMBRE_MODELO = f"{catalogo}.{schema}.modelo_forecast"
+
+# el pipeline: one-hot al país, el resto de features pasa directo, y un Random Forest multi-salida
+pre = ColumnTransformer([("pais", OneHotEncoder(handle_unknown="ignore"), ["pais"])],
+                        remainder="passthrough")
+modelo = Pipeline([("pre", pre),
+                   ("rf", RandomForestRegressor(n_estimators=200, random_state=42))])
+
+# 1 · train/test por tiempo (últimos 60 días = test)
+corte = serie["dia"].max() - pd.Timedelta(days=60)
+tr = serie[serie["dia"] <= corte]
+te = serie[serie["dia"] > corte]
+
+mlflow.set_experiment(f"/Users/{_usuario}/z2h_retail_forecast")
+with mlflow.start_run(run_name="rf_forecast") as run:
+    modelo.fit(construir_features(tr), tr[["monto", "unidades"]])
+    pred_te = modelo.predict(construir_features(te))
+
+    # MAPE del monto: error porcentual medio (0.10 = 10% de error)
+    real = te["monto"].values
+    mape = float(np.mean(np.abs(real - pred_te[:, 0]) / np.clip(np.abs(real), 1, None)))
+    # desviación de los residuos: sirve para el intervalo del pronóstico
+    sd_monto = float(np.std(real - pred_te[:, 0]))
+
+    # 3 · reentrena con TODA la serie (para que el pronóstico use todo el histórico) y registra
+    modelo.fit(X, y)
+    mlflow.log_param("algoritmo", "RandomForest multi-salida (monto + unidades)")
+    mlflow.log_param("n_estimators", 200)
+    mlflow.log_metric("mape_monto", mape)
+    mlflow.sklearn.log_model(modelo, "modelo", input_example=X.head(3))
+    run_id = run.info.run_id
+
+# registra el modelo en Unity Catalog y ponle el alias 'champion'
+version = mlflow.register_model(f"runs:/{run_id}/modelo", NOMBRE_MODELO).version
+MlflowClient().set_registered_model_alias(NOMBRE_MODELO, "champion", version)
+
+print(f"✅ Entrenamiento terminado")
+print(f"📊 MAPE del monto = {mape:.1%}   (más bajo es mejor)")
+print(f"🔖 Modelo registrado como {NOMBRE_MODELO}@champion (versión {version})")
+print()
+print("👉 Ábrelo en el ícono de Experiments (probeta) y en Catalog → Models.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Paso 5 · Pronostica 90 días y guárdalo para el dashboard
+# MAGIC
+# MAGIC Cargamos el modelo **por su alias** `@champion` (no por versión ni ruta: así el código no
+# MAGIC cambia cuando reentrenas). Generamos las fechas futuras × país, predecimos, y guardamos el
+# MAGIC resultado en `gold_pronostico_pais` — la tabla que consume el **Módulo 7** (dashboard,
+# MAGIC Genie y app).
+
+# COMMAND ----------
+
+modelo_champion = mlflow.sklearn.load_model(f"models:/{NOMBRE_MODELO}@champion")
+
+# fechas futuras: 90 días después del último dato, para cada país
+ultimo_dia = serie["dia"].max()
+paises = sorted(serie["pais"].unique())
+fechas = pd.date_range(ultimo_dia + pd.Timedelta(days=1), periods=90, freq="D")
+futuro = pd.DataFrame([(f, p) for f in fechas for p in paises], columns=["dia", "pais"])
+
+pred = modelo_champion.predict(construir_features(futuro))
+# nunca proyectar negativo (las ventas no lo son); el intervalo usa la desviación de los residuos
+futuro["monto_pronostico"] = np.clip(pred[:, 0], 0, None).round(2)
+futuro["monto_min"] = np.clip(pred[:, 0] - 1.28 * sd_monto, 0, None).round(2)
+futuro["monto_max"] = (pred[:, 0] + 1.28 * sd_monto).round(2)
+futuro["unidades_pronostico"] = np.clip(pred[:, 1], 0, None).round(0)
+futuro["dia"] = futuro["dia"].dt.date
+
+(spark.createDataFrame(
+    futuro[["dia", "pais", "monto_pronostico", "monto_min", "monto_max", "unidades_pronostico"]])
+ .write.mode("overwrite").option("overwriteSchema", "true")
+ .saveAsTable("gold_pronostico_pais"))
+
+print(f"✅ Pronóstico guardado en gold_pronostico_pais ({len(futuro):,} filas · "
+      f"{len(paises)} países × 90 días)")
 
 # COMMAND ----------
 
@@ -256,106 +294,36 @@ print("   Serie base del pronóstico: gold_ventas_diarias")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # 🅱️ Paso 4B · Plan B — SOLO si `ai_forecast` te dio error de preview
+# MAGIC # Paso 6 · Dos caminos para llegar a una predicción
 # MAGIC
-# MAGIC ¿Viste el error `AI_FUNCTION_PREVIEW ... ai_forecast is in preview and currently disabled`?
-# MAGIC Es que **falta activar el preview** «Predictive AI Functions» (un admin lo hace en
-# MAGIC **Settings → Previews**). Si no puedes activarlo ahora, **corre esta celda**: genera el mismo
-# MAGIC `gold_pronostico_pais` con un pronóstico **estacional simple en SQL puro**, para que el
-# MAGIC dashboard y la app del Módulo 7 funcionen igual.
+# MAGIC Hoy **entrenaste tu propio modelo** con MLflow. Es el camino cuando necesitas control: tus
+# MAGIC features, tu lógica, el modelo gobernado en Unity Catalog con alias, versiones y linaje.
 # MAGIC
-# MAGIC > 💡 **Qué hace:** para cada país y cada día futuro, reutiliza la venta del **mismo día hace
-# MAGIC > un año** (captura la estacionalidad anual que tienen los datos) y la ajusta por un **factor
-# MAGIC > de crecimiento** (últimos 90 días vs. los mismos 90 días del año anterior). Es un
-# MAGIC > *seasonal-naive*: no es tan bueno como `ai_forecast`, pero es honesto y funciona sin preview.
-# MAGIC >
-# MAGIC > 👉 Si `ai_forecast` **sí** funcionó, **no corras esta celda** — ya tienes el pronóstico bueno.
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC CREATE OR REPLACE TABLE gold_pronostico_pais AS
-# MAGIC WITH ultimo AS (SELECT MAX(dia) AS max_dia FROM gold_ventas_diarias),
-# MAGIC serie AS (
-# MAGIC   SELECT dia, pais, SUM(monto) AS monto, SUM(unidades) AS unidades
-# MAGIC   FROM gold_ventas_diarias GROUP BY dia, pais
-# MAGIC ),
-# MAGIC -- factor de crecimiento por país: últimos 90 días vs los mismos 90 días de hace un año
-# MAGIC crec AS (
-# MAGIC   SELECT s.pais,
-# MAGIC     SUM(CASE WHEN s.dia > date_sub(u.max_dia, 90) THEN s.monto ELSE 0 END) AS reciente,
-# MAGIC     SUM(CASE WHEN s.dia > date_sub(u.max_dia, 454)
-# MAGIC              AND s.dia <= date_sub(u.max_dia, 364) THEN s.monto ELSE 0 END) AS hace_un_anio
-# MAGIC   FROM serie s CROSS JOIN ultimo u GROUP BY s.pais
-# MAGIC ),
-# MAGIC futuras AS (
-# MAGIC   SELECT explode(sequence(date_add(u.max_dia, 1), date_add(u.max_dia, 90), interval 1 day)) AS dia
-# MAGIC   FROM ultimo u
-# MAGIC ),
-# MAGIC paises AS (SELECT DISTINCT pais FROM serie)
-# MAGIC SELECT
-# MAGIC   f.dia,
-# MAGIC   p.pais,
-# MAGIC   ROUND(COALESCE(h.monto, 0) * COALESCE(NULLIF(c.reciente,0)/NULLIF(c.hace_un_anio,0), 1.0), 2)
-# MAGIC     AS monto_pronostico,
-# MAGIC   ROUND(COALESCE(h.monto, 0) * COALESCE(NULLIF(c.reciente,0)/NULLIF(c.hace_un_anio,0), 1.0) * 0.88, 2)
-# MAGIC     AS monto_min,
-# MAGIC   ROUND(COALESCE(h.monto, 0) * COALESCE(NULLIF(c.reciente,0)/NULLIF(c.hace_un_anio,0), 1.0) * 1.12, 2)
-# MAGIC     AS monto_max,
-# MAGIC   ROUND(COALESCE(h.unidades, 0) * COALESCE(NULLIF(c.reciente,0)/NULLIF(c.hace_un_anio,0), 1.0), 0)
-# MAGIC     AS unidades_pronostico
-# MAGIC FROM futuras f
-# MAGIC CROSS JOIN paises p
-# MAGIC LEFT JOIN serie h ON h.pais = p.pais AND h.dia = date_sub(f.dia, 364)
-# MAGIC LEFT JOIN crec c ON c.pais = p.pais
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # Paso 5 · AI Functions y MLflow — cuándo cada uno
-# MAGIC
-# MAGIC `ai_forecast` es **una** de la familia de **AI Functions**: funciones de SQL que traen IA a
-# MAGIC cualquiera que sepa consultar. Otras que vale conocer:
+# MAGIC Databricks también tiene un **camino rápido** para problemas comunes: las **AI Functions**,
+# MAGIC funciones de SQL que traen IA a cualquiera que sepa consultar.
 # MAGIC
 # MAGIC | Función | Qué hace |
 # MAGIC |---|---|
-# MAGIC | `ai_forecast` | Pronostica una serie de tiempo *(lo que hiciste)* |
+# MAGIC | `ai_forecast` | Pronostica una serie de tiempo con una sola consulta SQL |
 # MAGIC | `ai_query` | Le manda un prompt a un LLM y devuelve la respuesta |
 # MAGIC | `ai_classify` | Clasifica texto en categorías que tú das |
 # MAGIC | `ai_analyze_sentiment` | Sentimiento de un texto (reseñas, comentarios) |
 # MAGIC | `ai_translate`, `ai_summarize` | Traduce, resume |
 # MAGIC
-# MAGIC > 💡 Ejemplo con `ai_query`: podrías pedirle *«clasifica esta reseña de producto como
-# MAGIC > positiva/negativa»* sobre miles de reseñas, en una sola consulta SQL. La IA deja de ser
-# MAGIC > un proyecto aparte y se vuelve una columna más.
-# MAGIC
-# MAGIC ### ¿Y MLflow? ¿Cuándo entrenar un modelo propio?
-# MAGIC
-# MAGIC Las AI Functions son el **camino rápido**: resuelven problemas comunes (pronóstico,
-# MAGIC clasificación, texto) sin entrenar nada. Pero cuando necesitas un modelo **a tu medida**
-# MAGIC —con tus propias features, tu propia lógica de negocio— entrenas uno y lo gestionas con
-# MAGIC **MLflow**:
-# MAGIC
-# MAGIC | | AI Functions (hoy) | MLflow (modelo propio) |
+# MAGIC | | Modelo propio (hoy · MLflow) | AI Functions |
 # MAGIC |---|---|---|
-# MAGIC | Cuándo | Problema común, quieres velocidad | Necesitas un modelo a medida |
-# MAGIC | Quién | Cualquiera con SQL | Científico/ingeniero de ML |
-# MAGIC | Esfuerzo | Una función | Entrenar, evaluar, registrar, versionar |
-# MAGIC | Gobierno | La función corre en la plataforma | El modelo se registra en Unity Catalog con alias `@champion`, versiones y linaje |
+# MAGIC | Cuándo | Necesitas control y un modelo a tu medida | Problema común, quieres velocidad |
+# MAGIC | Quién | Científico/ingeniero de ML | Cualquiera con SQL |
+# MAGIC | Gobierno | Registrado en UC con alias `@champion`, versiones y linaje | La función corre en la plataforma |
 # MAGIC
-# MAGIC Con **MLflow** registras cada corrida (parámetros, métricas, el modelo), comparas
-# MAGIC versiones, y promueves la mejor con un alias. El modelo queda como **objeto gobernado de
-# MAGIC Unity Catalog**, con permisos y linaje igual que una tabla — y una app o un job lo consulta
-# MAGIC por su alias sin saber qué versión es.
-# MAGIC
-# MAGIC > 🎓 **La regla práctica:** empieza por la AI Function. Si resuelve el problema, listo. Si
-# MAGIC > necesitas más control, entrenas con MLflow. Hoy, para pronosticar ventas, `ai_forecast`
-# MAGIC > sobra — y por eso es el camino correcto.
+# MAGIC > 🎓 **La regla práctica:** si un modelo a medida te da control y lo necesitas, entrénalo y
+# MAGIC > gobiérnalo con MLflow — es lo que hiciste. Si un problema común se resuelve con una
+# MAGIC > función de SQL y está disponible en tu workspace, úsala. Ambos caminos conviven.
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 6 · Verifica tu checkpoint
+# MAGIC # Paso 7 · Verifica tu checkpoint
 
 # COMMAND ----------
 
@@ -383,6 +351,12 @@ try:
 except Exception:
     resultados.append((False, "No pude comprobar las fechas futuras"))
 
+try:
+    MlflowClient().get_model_version_by_alias(f"{catalogo}.{schema}.modelo_forecast", "champion")
+    resultados.append((True, "El modelo está registrado en Unity Catalog como modelo_forecast@champion"))
+except Exception:
+    resultados.append((False, "No encuentro el modelo modelo_forecast@champion en UC"))
+
 print("=" * 68)
 print("  MÓDULO 6 · CHECKPOINT")
 print("=" * 68)
@@ -392,17 +366,18 @@ print("=" * 68)
 if all(ok for ok, _ in resultados):
     print("""
   🎉 ¡Módulo 6 completo!
-    · Pronosticaste las ventas totales con ai_forecast — solo SQL
-    · Lo escalaste a un pronóstico por país con un argumento
-    · Proyectaste dólares y unidades a la vez
-    · Guardaste el pronóstico como tabla gold para el dashboard
+    · Convertiste una serie de tiempo en features
+    · Entrenaste un modelo de forecast y mediste su error (MAPE) con MLflow
+    · Lo registraste en Unity Catalog con alias @champion
+    · Proyectaste 90 días por país y lo guardaste como tabla gold para el dashboard
 
   👉 En el Módulo 7 pones todo frente a quien decide: un dashboard con
      ventas + pronóstico + inventario, un Genie que responde preguntas,
      y una app de reabastecimiento.
 """)
 else:
-    print("  ⚠️  Revisa los ❌. Si ai_forecast dio error de compute, usa un SQL warehouse Pro/Serverless.")
+    print("  ⚠️  Revisa los ❌. Lo más común: no corriste el Paso 4/5, o el schema no es el "
+          "mismo donde generaste gold_ventas_diarias.")
 
 # COMMAND ----------
 
@@ -411,11 +386,11 @@ else:
 # MAGIC
 # MAGIC | Concepto | Dónde lo viviste |
 # MAGIC |---|---|
-# MAGIC | **AI Functions**: IA como función de SQL | `ai_forecast` en dos consultas |
-# MAGIC | **Pronóstico con intervalo** | `_forecast`, `_upper`, `_lower` |
-# MAGIC | **Varias métricas a la vez** | dólares y unidades en una llamada |
-# MAGIC | **Escala con `group_col`** | de 1 serie a 6 países, sin bucles |
-# MAGIC | **AI Functions vs MLflow** | rápido vs a medida — cuándo cada uno |
+# MAGIC | **De fecha a features** | tendencia + estacionalidad (sin/cos anual) |
+# MAGIC | **Entrenar y evaluar** | train/test por tiempo, métrica **MAPE** con MLflow |
+# MAGIC | **Modelo gobernado** | registrado en Unity Catalog con alias `@champion` |
+# MAGIC | **Cargar por alias y predecir** | `models:/…@champion` → pronóstico 90 días |
+# MAGIC | **Modelo propio vs AI Functions** | control a medida vs velocidad en SQL |
 # MAGIC
 # MAGIC ## Lo que sigue
 # MAGIC Tienes el pronóstico como tabla gold. En el **Módulo 7** —el último— lo pones frente a un

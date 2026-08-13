@@ -37,7 +37,7 @@
 # MAGIC | 4 | Lees el historial de la tabla | Que cada cambio queda registrado solo |
 # MAGIC | 5 | Modificas la tabla — y te equivocas | Que en datos, equivocarse es normal |
 # MAGIC | 6 | **Recuperas el dato anterior** ⭐ | *Time travel*: el momento clave del módulo |
-# MAGIC | 7 | Exploras con el asistente de IA y el explorador | Cómo se trabaja hoy en Databricks |
+# MAGIC | 7 | Encuentras tu tabla en el explorador | Dónde vive todo lo que creas |
 # MAGIC
 # MAGIC ---
 # MAGIC
@@ -100,110 +100,74 @@
 
 # COMMAND ----------
 
-# ═══ CELDA A · crear los campos ═══════════════════════════════════════════
-# Ejecuta esta celda. Después mira los dos campos que aparecen ARRIBA del notebook,
-# ajústalos si hace falta, y sigue con la celda B.
-
-import re
-
-# current_user() devuelve el correo con el que iniciaste sesión: se usa para proponer un
-# nombre de schema único tuyo, así nadie tiene que inventarse uno.
-_usuario = spark.sql("SELECT current_user()").collect()[0][0]
-_schema_sugerido = "retail_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
-
-_ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-_disponibles = [r[0] for r in spark.sql("SHOW CATALOGS").collect()
-                if r[0].lower() not in _ocultos]
-
-# En vez de adivinar el catálogo, se BUSCA dónde quedó tu schema del taller: así los campos
-# ya vienen con los valores correctos y no hay que recordar qué se usó en el otro notebook.
-_encontrado = None
-for _c in _disponibles:
-    try:
-        _sc = [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{_c}`").collect()]
-        if _schema_sugerido in _sc:
-            _encontrado = _c
-            break
-    except Exception:
-        continue   # sin permiso para listar este catálogo: se ignora y se sigue
-
-_sugerido = _encontrado or (_disponibles[0] if _disponibles else "")
-
-dbutils.widgets.text("catalogo", _sugerido, "1 · Catálogo")
-dbutils.widgets.text("schema", _schema_sugerido, "2 · Schema")
-
-print("👆 Ya aparecieron los dos campos ARRIBA de este notebook.\n")
-if _encontrado:
-    print(f"   ✅ Encontré tu schema del taller: {_encontrado}.{_schema_sugerido}")
-    print(f"      Los campos ya quedaron con esos valores. Sigue con la celda B.")
-else:
-    print(f"   ⚠️  No encontré un schema llamado '{_schema_sugerido}' en ningún catálogo.")
-    print(f"      Revisa los campos de arriba antes de seguir.\n")
-    print("   📦 Catálogos donde puedes buscar:")
-    for c in _disponibles:
-        print(f"        · {c}")
-    print()
-    print("   Usa los MISMOS valores que en 00_generar_datos — ahí quedaron tus archivos.")
+# MAGIC %md
+# MAGIC # Paso 1 · Declara tu catálogo y tu schema
+# MAGIC
+# MAGIC **Corre la celda de abajo una vez** para que aparezcan dos campos arriba del notebook.
+# MAGIC Luego **escribe en ellos el catálogo y el schema donde estás trabajando** — los
+# MAGIC **mismos** que declaraste en el Módulo 1 y que vienes usando en todos los módulos.
+# MAGIC
+# MAGIC > ⚠️ **No adivinamos nada por ti.** Tú declaras explícitamente dónde trabajas, para que
+# MAGIC > no haya duda de en qué catálogo y schema estás. Si los dejas vacíos, el notebook se
+# MAGIC > detiene y te lo pide.
 
 # COMMAND ----------
 
-# ═══ CELDA B · leer los campos y comprobar ════════════════════════════════
-# Si cambias algo en los campos de arriba, vuelve a ejecutar solo esta celda.
+# ═══ Declara aquí tu espacio de trabajo ═══════════════════════════════════
+# Crea los dos campos (arriba). Escribe en ellos tu catálogo y tu schema — los MISMOS
+# de siempre. No se infiere ni se adivina nada: tú decides dónde trabajas.
+dbutils.widgets.text("catalogo", "", "1 · Catálogo")
+dbutils.widgets.text("schema",   "", "2 · Schema")
 
+print("👆 Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba, y sigue con la "
+      "siguiente celda.")
+
+# COMMAND ----------
+
+# ═══ Lee y valida lo que declaraste ═══════════════════════════════════════
 catalogo = dbutils.widgets.get("catalogo").strip()
 schema = dbutils.widgets.get("schema").strip()
-# se recalcula acá para que esta celda sea autosuficiente: puedes re-ejecutar solo la celda B
-# sin depender de que la celda A siga en memoria.
 usuario = spark.sql("SELECT current_user()").collect()[0][0]
 
-# Este notebook NO crea nada: eso lo hizo 00_generar_datos. Si algo falta, mejor decirlo acá.
+# 1 · no puede estar vacío — obliga a declarar conscientemente
+if not catalogo or not schema:
+    raise Exception(
+        "\n❌ Falta declarar tu espacio de trabajo.\n"
+        "   Escribe el CATÁLOGO y el SCHEMA en los campos de arriba (los mismos que usaste "
+        "en el Módulo 1) y vuelve a correr esta celda.\n"
+    )
+
+# 2 · el catálogo tiene que existir
 catalogos = [r[0] for r in spark.sql("SHOW CATALOGS").collect()]
 if catalogo not in catalogos:
+    _visibles = [c for c in catalogos
+                 if c.lower() not in ("system", "samples", "__databricks_internal", "hive_metastore")]
     raise Exception(
-        f"\n❌ El catálogo '{catalogo}' no existe en este workspace.\n\n"
-        f"   👉 Escribe uno de estos en el campo 'catalogo' de ARRIBA:\n"
-        + "".join(f"        · {c}\n" for c in _disponibles)
-        + f"\n   Después vuelve a ejecutar SOLO esta celda (celda B).\n"
+        f"\n❌ El catálogo '{catalogo}' no existe o no lo ves.\n"
+        f"   👉 Escribe uno de estos en el campo de arriba:\n"
+        + "".join(f"        · {c}\n" for c in _visibles)
     )
 
+# 3 · el schema tiene que existir (lo creaste en el Módulo 1)
 schemas = [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{catalogo}`").collect()]
 if schema not in schemas:
-    parecidos = [s for s in schemas if s.startswith("retail_")]
-    msg = f"\n❌ El schema '{catalogo}.{schema}' no existe.\n\n"
-    if parecidos:
-        msg += ("   👉 En este catálogo hay estos schemas del taller:\n"
-                + "".join(f"        · {s}\n" for s in parecidos[:5])
-                + "\n   Escribe uno en el campo 'schema' de arriba y ejecuta esta celda.\n")
-    else:
-        msg += ("   No hay ningún schema del taller en este catálogo.\n\n"
-                "   ¿Corriste el notebook 00_generar_datos con estos mismos dos valores?\n"
-                "   Córrelo primero: este ejercicio usa los archivos que ese genera.\n")
-    raise Exception(msg)
-
-# USE fija el schema por defecto: a partir de acá puedes escribir 'mis_ventas' en vez del
-# nombre completo 'catalogo.schema.mis_ventas'
-spark.sql(f"USE `{catalogo}`.`{schema}`")
-
-# Un VOLUME es el lugar donde Unity Catalog guarda ARCHIVOS (no tablas): JSON, CSV, imágenes.
-RAW = f"/Volumes/{catalogo}/{schema}/raw"
-
-try:
-    n = len([f for f in dbutils.fs.ls(f"{RAW}/ventas") if f.name.endswith(".json")])
-    if n == 0:
-        raise Exception("sin archivos")
-except Exception:
     raise Exception(
-        f"\n❌ No encuentro los archivos en {RAW}/ventas\n\n"
-        f"   Corre primero el notebook 00_generar_datos con estos mismos valores de\n"
-        f"   catálogo y schema.\n"
+        f"\n❌ El schema '{catalogo}.{schema}' no existe.\n"
+        f"   Corre 00_generar_datos con estos mismos valores primero, o corrige el nombre "
+        f"arriba.\n"
     )
 
-print(f"👤 Tu usuario   : {usuario}")
-print(f"📦 Tu catálogo  : {catalogo}")
-print(f"📁 Tu schema    : {schema}")
-print(f"🗂️  Tus archivos : {RAW}  ({n} archivos de ventas)")
-print()
-print("✅ Todo listo. Este es tu espacio: nadie más lo toca.")
+spark.sql(f"USE `{catalogo}`.`{schema}`")
+
+print(f"👤 Usuario       : {usuario}")
+print(f"📁 Trabajarás en : {catalogo}.{schema}")
+print("✅ Espacio declarado y verificado. Nadie más toca este schema.")
+
+# COMMAND ----------
+
+# Un VOLUME es el lugar donde Unity Catalog guarda ARCHIVOS (no tablas).
+# Sirve para lo que llega crudo: JSON, CSV, imágenes, PDFs.
+RAW = f"/Volumes/{catalogo}/{schema}/raw"
 
 # COMMAND ----------
 
@@ -645,31 +609,8 @@ if USAR_SOLUCION:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 7 · Explora: el asistente de IA y el catálogo
+# MAGIC # Paso 7 · Encuentra tu tabla en el explorador
 # MAGIC
-# MAGIC ## 7.1 · Pídele algo al asistente de IA
-# MAGIC El asistente integrado **conoce tus tablas**: sus nombres, columnas y tipos. Busca su
-# MAGIC ícono (arriba a la derecha del notebook) y pídele:
-# MAGIC
-# MAGIC > *«Escribe una consulta que muestre el monto total de ventas por país, ordenado de mayor
-# MAGIC > a menor, sobre la tabla mis_ventas»*
-# MAGIC
-# MAGIC Pega lo que te dé en la celda de abajo y ejecútalo.
-# MAGIC
-# MAGIC > ⚠️ **Lee lo que propone antes de ejecutarlo.** No siempre acierta, y en datos un error
-# MAGIC > silencioso es peor que uno ruidoso. Revisar la respuesta de la IA es parte del trabajo.
-
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC -- Pega acá el SQL que te dio el asistente y ejecútalo
-# MAGIC
-# MAGIC
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 7.2 · Encuentra tu tabla en el explorador
 # MAGIC En el menú de la izquierda abre **Catalog** y navega:
 # MAGIC
 # MAGIC ```

@@ -17,8 +17,9 @@
 # MAGIC te dice exactamente qué hacer si algo falta.
 # MAGIC
 # MAGIC > 🔒 **No modifica ni borra nada tuyo.** Crea unos objetos mínimos de prueba
-# MAGIC > (un schema, una tabla, un dashboard vacío, un espacio Genie vacío) y **los elimina
-# MAGIC > al terminar**. Todo lo que crea lleva el prefijo `_z2h_probe` o `_verificacion`.
+# MAGIC > (una tabla, un volumen, un dashboard vacío, un espacio Genie vacío) y **los elimina
+# MAGIC > al terminar**. Todo lo de prueba lleva un prefijo (`_verificacion`, `_z2h_probe`).
+# MAGIC > **Tu schema sí queda creado** — es tu espacio de trabajo para todo el taller.
 # MAGIC >
 # MAGIC > ⚠️ **Material de aprendizaje — no es production-ready.** Los notebooks del taller
 # MAGIC > enseñan conceptos con datos 100% sintéticos; no están pensados para copiarse a
@@ -91,12 +92,45 @@
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## 📌 IMPORTANTE — aquí decides DÓNDE vas a trabajar todo el día
+# MAGIC
+# MAGIC Arriba de este notebook hay **dos campos** (widgets) que tienes que llenar **antes de
+# MAGIC correr nada**:
+# MAGIC
+# MAGIC | Campo | Qué es | Ejemplo |
+# MAGIC |---|---|---|
+# MAGIC | **1 · Catálogo** | El catálogo de Unity Catalog donde vas a trabajar. En **Free Edition** casi siempre es `workspace`. En un **workspace corporativo**, alínealo internamente con tu equipo: puedes **usar un catálogo que ya exista** (muchas veces es el mejor camino) o **crear uno nuevo** dedicado al taller. **Crear un catálogo NO es obligatorio.** | `workspace` |
+# MAGIC | **2 · Schema** | El nombre de **tu** espacio de trabajo, dentro de ese catálogo. Lo eliges tú, con el nombre que quieras (sin espacios ni acentos). | `z2h_ana` |
+# MAGIC
+# MAGIC ### 🔑 Esta decisión te acompaña TODO el taller
+# MAGIC
+# MAGIC El catálogo y el schema que escribas aquí **son los mismos que vas a usar en cada uno
+# MAGIC de los 7 módulos**. Todo lo que construyas durante el día —tablas, pipeline, modelo,
+# MAGIC dashboard— va a vivir en `catálogo.schema`. Por eso:
+# MAGIC
+# MAGIC > ⭐ **Escríbelos con calma, y ANÓTALOS** (en un papel, en tus notas, donde sea).
+# MAGIC > Cada módulo te va a pedir estos dos nombres otra vez, y tienes que escribir
+# MAGIC > **exactamente los mismos**. La causa #1 de errores en el taller es escribir un
+# MAGIC > nombre distinto en cada módulo — así que aquí lo defines una vez y lo repites igual.
+# MAGIC
+# MAGIC No se infiere ni se adivina nada a partir de tu correo: **tú tienes el control** de
+# MAGIC dónde trabajas.
+# MAGIC
+# MAGIC > 💡 ¿Los widgets no aparecen arriba? Corre la **celda del Paso 0** una vez: los crea
+# MAGIC > automáticamente. Luego llénalos y haz `Run all`.
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## ▶️ Cómo usarlo
 # MAGIC
 # MAGIC 1. **Conecta el notebook a un compute** — arriba a la derecha. Si no tienes uno,
 # MAGIC    créalo (serverless sirve perfecto).
-# MAGIC 2. **Menú `Run` → `Run all`** y espera. Cada paso imprime ✅, ⚠️ o ❌.
-# MAGIC 3. Al final aparece un **resumen** con tu veredicto:
+# MAGIC 2. **Corre la celda del `Paso 0`** para que aparezcan los dos campos arriba, y
+# MAGIC    **llénalos**: `Catálogo` y `Schema`. (Ver la sección anterior — es la decisión
+# MAGIC    más importante de este notebook.)
+# MAGIC 3. **Menú `Run` → `Run all`** y espera. Cada paso imprime ✅, ⚠️ o ❌.
+# MAGIC 4. Al final aparece un **resumen** con tu veredicto:
 # MAGIC
 # MAGIC | | Significa |
 # MAGIC |---|---|
@@ -104,7 +138,7 @@
 # MAGIC | 🟡 **Listo con limitaciones** | Puedes participar; algunos ejercicios tendrán alcance reducido. |
 # MAGIC | 🔴 **Falta algo** | Hay que resolver un permiso antes del taller. |
 # MAGIC
-# MAGIC 4. **Copia el bloque de resumen y respóndenos el correo con eso pegado** — incluso si
+# MAGIC 5. **Copia el bloque de resumen y respóndenos el correo con eso pegado** — incluso si
 # MAGIC    todo sale en verde. Así sabemos que estás listo.
 # MAGIC
 # MAGIC ### ¿Por qué te pedimos esto?
@@ -121,30 +155,43 @@
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## Paso 0 · Define tu catálogo y tu schema
+# MAGIC
+# MAGIC **Corre esta celda primero.** Crea los dos campos (widgets) arriba del notebook.
+# MAGIC Luego **escribe en ellos tu catálogo y tu schema**, y sigue con el resto (`Run all`).
+# MAGIC
+# MAGIC Estos dos nombres son los que vas a usar durante **todo** el taller — anótalos y
+# MAGIC repítelos idénticos en cada módulo. **No se infiere ni se adivina nada** a partir de tu
+# MAGIC correo: tú eliges dónde trabajas.
+
+# COMMAND ----------
+
+# ── Crea los widgets de catálogo y schema (solo definición; escribe los valores arriba) ──
+dbutils.widgets.text("catalogo", "", "1 · Catálogo (escríbelo)")
+dbutils.widgets.text("schema",   "", "2 · Schema (escríbelo)")
+
+print("✅ Widgets listos arriba. Escribe tu CATÁLOGO y tu SCHEMA, y luego haz 'Run all'.")
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## Paso 1 · ¿Quién eres y hay compute?
 # MAGIC
 # MAGIC Identifica tu usuario y comprueba que el notebook puede ejecutar código. Si este
 # MAGIC paso falla, es porque **no hay un compute conectado** — mira arriba a la derecha.
 # MAGIC
-# MAGIC También deriva el nombre de tu schema personal a partir de tu usuario, así que
-# MAGIC **nunca tienes que editar nombres a mano** durante el taller.
+# MAGIC También lee y valida el **catálogo** y el **schema** que escribiste en los widgets del
+# MAGIC Paso 0. Esos dos nombres son los que usarás durante **todo** el taller — anótalos y
+# MAGIC repítelos idénticos en cada módulo.
 
 # COMMAND ----------
 
 import re
 from datetime import datetime, timezone
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CATÁLOGO DEL TALLER — no necesitas cambiar nada acá
-#
-# Por defecto el notebook NO crea catálogos: busca uno donde ya puedas trabajar.
-# Crear catálogos requiere permisos que la mayoría de los workspaces corporativos
-# no dan, y no hace falta para el taller.
-#
-CATALOGO = ""                    # ¿ya sabes cuál usar? escríbelo acá. Vacío = automático.
-CREAR_CATALOGO = False           # casi siempre no se pueden crear catálogos; déjalo en False
-CATALOGO_PREFERIDO = "workspace" # 'workspace' es el de Free Edition y el más común en UC
-# ─────────────────────────────────────────────────────────────────────────────
+# Lee los valores que escribiste en los widgets del Paso 0.
+CATALOGO = dbutils.widgets.get("catalogo").strip()
+SCHEMA   = dbutils.widgets.get("schema").strip()
 
 resultados = []   # (clave, etiqueta, estado, detalle, arreglo)
 OK, PARCIAL, FALLA, NA = "OK", "PARCIAL", "FALLA", "N/D"
@@ -178,11 +225,40 @@ def probar(clave, etiqueta, fn, arreglo="", critico=True):
 
 # ---- identidad ----
 usuario = spark.sql("SELECT current_user()").collect()[0][0]
-# el schema personal se deriva del usuario: nadie tiene que editar nombres a mano
-schema_personal = "fin_" + re.sub(r"[^a-z0-9_]", "_", usuario.split("@")[0].lower())
 
-print(f"Usuario     : {usuario}")
-print(f"Tu schema   : <catálogo>.{schema_personal}   (el catálogo se elige en el paso 2)")
+
+def _nombre_valido(v):
+    """Un identificador de UC válido: letras, números y guión bajo, empezando por letra o _."""
+    return bool(re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", v))
+
+
+# Validación de los nombres que escribiste en los widgets. Si están vacíos o mal formados,
+# el notebook lo dice acá y no tres pasos más adelante con un error críptico de SQL.
+NOMBRES_OK = True
+if not CATALOGO or not SCHEMA:
+    NOMBRES_OK = False
+    print("⚠️  Faltan nombres. Escribe el CATÁLOGO y el SCHEMA en los widgets de arriba y "
+          "vuelve a correr.\n"
+          "    · Catálogo: dónde vas a trabajar. En Free Edition suele ser 'workspace'. En un "
+          "workspace corporativo, alínealo con tu equipo: sirve un catálogo existente o uno "
+          "nuevo dedicado al taller (crear catálogo NO es obligatorio).\n"
+          "    · Schema: el nombre de tu espacio de trabajo, el que quieras "
+          "(p. ej. z2h_ana, taller_ana…).")
+else:
+    for etiqueta, valor in (("catálogo", CATALOGO), ("schema", SCHEMA)):
+        if not _nombre_valido(valor):
+            NOMBRES_OK = False
+            print(f"⚠️  '{valor}' no es un nombre válido para el {etiqueta}. Usa solo letras, "
+                  f"números y guión bajo, empezando por una letra. Corrígelo arriba y vuelve "
+                  f"a correr.")
+
+print(f"Usuario   : {usuario}")
+print(f"Catálogo  : {CATALOGO or '(vacío — escríbelo arriba)'}")
+print(f"Schema    : {SCHEMA or '(vacío — escríbelo arriba)'}")
+if NOMBRES_OK:
+    print(f"→ Trabajarás en: {CATALOGO}.{SCHEMA}")
+    print("  ⭐ ANOTA estos dos nombres. Los vas a escribir IGUALES en cada módulo del")
+    print("     taller (M1 a M7). Aquí es donde eliges tu espacio de trabajo para todo el día.")
 
 # En compute serverless las clusterUsageTags no existen: hay que detectarlo, no
 # reportar "desconocida", que parece un error cuando no lo es.
@@ -232,97 +308,60 @@ print("Catálogos visibles:", detectar_edicion())
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Paso 2 · Unity Catalog: catálogo y schema
+# MAGIC ## Paso 2 · Unity Catalog: tu catálogo y tu schema
 # MAGIC
-# MAGIC Durante el taller cada persona trabaja en su propio schema. Esto comprueba que
-# MAGIC tienes un catálogo donde puedas crearlo.
+# MAGIC Acá se comprueba que puedes trabajar en el **catálogo** y el **schema** que escribiste
+# MAGIC en los widgets de arriba. **No se infiere ni se adivina nada**: se usan exactamente los
+# MAGIC nombres que tú pusiste, que son los mismos que repetirás en cada módulo.
 # MAGIC
-# MAGIC > **No hace falta crear un catálogo nuevo.** El notebook busca automáticamente uno
-# MAGIC > donde ya puedas trabajar — sirve cualquiera donde tengas permiso de crear schemas.
+# MAGIC > 💡 **¿Qué escribir?**
+# MAGIC > - **Catálogo:** dónde vas a trabajar. En Free Edition suele ser `workspace`. En un
+# MAGIC >   workspace corporativo, **alínealo internamente con tu equipo**: puedes reutilizar un
+# MAGIC >   catálogo existente (a menudo es el mejor camino) o crear uno nuevo para el taller.
+# MAGIC >   **Crear un catálogo no es obligatorio.**
+# MAGIC > - **Schema:** el nombre que quieras para tu espacio (p. ej. `z2h_ana`). Si no existe,
+# MAGIC >   el notebook intenta crearlo.
 # MAGIC >
-# MAGIC > Si quieres que intente crear el catálogo `z2h`, pon `CREAR_CATALOGO = True` en la
-# MAGIC > celda anterior. Requiere permisos de administrador y **no es necesario para el
-# MAGIC > taller**.
+# MAGIC > ⭐ **Anota los dos nombres y repítelos idénticos en todos los notebooks.** La mayoría
+# MAGIC > de los errores del taller vienen de escribir un nombre distinto en cada módulo.
 
 # COMMAND ----------
 
-def elegir_catalogo():
-    """Encuentra un catálogo donde el participante pueda crear schemas.
-
-    Orden: (1) el que se fijó a mano arriba · (2) CATALOGO_PREFERIDO ('workspace') si YA
-    existe · (3) el primero de la lista donde CREATE SCHEMA funcione de verdad. Solo intenta
-    *crear* el preferido si CREAR_CATALOGO = True (rara vez se puede).
-
-    Se comprueba creando y borrando un schema, no leyendo permisos: en muchos
-    workspaces el catálogo es visible pero no se puede escribir en él, y eso solo se
-    descubre intentándolo.
-    """
-    global CATALOGO
-    disponibles = [r[0] for r in spark.sql("SHOW CATALOGS").collect()]
-
-    def puedo_escribir(cat):
-        tmp = f"{cat}._z2h_probe"
-        try:
-            spark.sql(f"CREATE SCHEMA IF NOT EXISTS {tmp}")
-            spark.sql(f"DROP SCHEMA IF EXISTS {tmp}")
-            return True
-        except Exception:
-            return False
-
-    # 1 · fijado a mano al inicio del notebook
-    if CATALOGO:
-        if puedo_escribir(CATALOGO):
-            return f"'{CATALOGO}' (fijado manualmente)"
-        raise Exception(f"no puedes crear schemas en '{CATALOGO}'")
-
-    # 2 · el preferido del taller, si ya existe
-    if CATALOGO_PREFERIDO.lower() in [c.lower() for c in disponibles]:
-        if puedo_escribir(CATALOGO_PREFERIDO):
-            CATALOGO = CATALOGO_PREFERIDO
-            return f"'{CATALOGO}' ya existe"
-
-    # 2b · crearlo, solo si se pidió explícitamente
-    elif CREAR_CATALOGO:
-        try:
-            spark.sql(f"CREATE CATALOG IF NOT EXISTS {CATALOGO_PREFERIDO}")
-            CATALOGO = CATALOGO_PREFERIDO
-            return f"'{CATALOGO}' creado"
-        except Exception as e:
-            print(f"   (no se pudo crear '{CATALOGO_PREFERIDO}': "
-                  f"{str(e).split(chr(10))[0][:110]})")
-            print("   → buscando un catálogo existente donde puedas trabajar…")
-
-    # 3 · cualquiera donde se pueda escribir (se excluyen los del sistema)
-    for cat in disponibles:
-        if cat.lower() in ("system", "samples", "__databricks_internal", "hive_metastore"):
-            continue
-        if puedo_escribir(cat):
-            CATALOGO = cat
-            return f"'{CATALOGO}' (catálogo existente)"
-
-    raise Exception("no se encontró ningún catálogo donde puedas crear schemas")
+def usar_catalogo():
+    """Comprueba que el catálogo que escribiste existe y puedes entrar en él."""
+    if not NOMBRES_OK:
+        raise Exception("faltan o son inválidos los nombres del catálogo/schema (arriba)")
+    cats = [r[0].lower() for r in spark.sql("SHOW CATALOGS").collect()]
+    if CATALOGO.lower() not in cats:
+        raise Exception(
+            f"el catálogo '{CATALOGO}' no aparece entre los que ves. "
+            f"Revisa el nombre o el acceso a ese catálogo.")
+    spark.sql(f"USE CATALOG {CATALOGO}")
+    return f"'{CATALOGO}' visible y accesible"
 
 
-probar("uc_catalogo", "Catálogo disponible para trabajar", elegir_catalogo,
-       arreglo="Pídele a tu administrador un catálogo donde puedas crear schemas, "
-               "escríbelo en la variable CATALOGO al inicio del notebook y vuelve a "
-               "correrlo. Si no consigues ninguno, crea una cuenta de prueba gratuita "
-               "en https://www.databricks.com/try-databricks y corre el notebook ahí.")
+probar("uc_catalogo", "Tu catálogo existe y puedes entrar en él", usar_catalogo,
+       arreglo="Escribe en el widget 'catalogo' un catálogo donde tengas acceso. En Free "
+               "Edition suele ser 'workspace'. En un workspace corporativo, alínealo con tu "
+               "equipo: sirve un catálogo existente o uno nuevo dedicado al taller (crear "
+               "catálogo no es obligatorio). Si no consigues ninguno, crea una cuenta de "
+               "prueba gratuita en https://www.databricks.com/try-databricks y corre el "
+               "notebook ahí.")
 
-print(f"→ Catálogo del taller: {CATALOGO or '(ninguno disponible)'}")
 
-# ---- schema personal ----
 def crear_schema():
-    if not CATALOGO:
-        raise Exception("sin catálogo disponible: se resuelve el paso anterior primero")
-    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOGO}.{schema_personal}")
-    spark.sql(f"USE {CATALOGO}.{schema_personal}")
-    return f"{CATALOGO}.{schema_personal}"
+    """Crea (o reutiliza) el schema que escribiste. Es lo que harás en cada módulo."""
+    if not NOMBRES_OK:
+        raise Exception("faltan o son inválidos los nombres del catálogo/schema (arriba)")
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {CATALOGO}.{SCHEMA}")
+    spark.sql(f"USE {CATALOGO}.{SCHEMA}")
+    return f"{CATALOGO}.{SCHEMA} listo para trabajar"
 
 
-probar("uc_schema", "Puedes crear tu schema personal", crear_schema,
-       arreglo="Necesitas CREATE SCHEMA en el catálogo del taller. "
-               "Pídeselo a tu administrador de Databricks.")
+probar("uc_schema", "Puedes crear/usar tu schema", crear_schema,
+       arreglo="Necesitas CREATE SCHEMA en ese catálogo. Prueba con otro catálogo en el "
+               "widget (p. ej. 'workspace'), o alínealo con tu equipo / administrador para "
+               "usar un catálogo donde sí puedas crear tu schema.")
 
 # COMMAND ----------
 
@@ -344,24 +383,26 @@ def _requiere_catalogo():
         raise Exception("sin catálogo disponible — resuelve el paso 2 primero")
 
 
-TABLA = f"{CATALOGO}.{schema_personal}._verificacion_tmp"
+TABLA = f"{CATALOGO}.{SCHEMA}._verificacion_tmp"
 
 
 def crear_tabla():
     _requiere_catalogo()
-    # 'tarjeta' se declara desde el inicio: el paso 5 la necesita para probar el
-    # column masking, y agregarla después con ALTER TABLE es un paso frágil de más.
+    # Tabla de prueba NEUTRA, agnóstica al escenario de capstone: columnas genéricas que
+    # sirven para probar Delta, time travel, row filter (por 'region') y column masking
+    # (sobre 'dato_sensible'). El paso 5 necesita 'dato_sensible' desde el inicio, porque
+    # agregarla después con ALTER TABLE es un paso frágil de más.
     spark.sql(f"""
         CREATE OR REPLACE TABLE {TABLA} (
-            id INT, monto DOUBLE, region STRING, es_fraude BOOLEAN, tarjeta STRING
+            id INT, valor DOUBLE, region STRING, marcado BOOLEAN, dato_sensible STRING
         )
     """)
     spark.sql(f"""
         INSERT INTO {TABLA} VALUES
-        (1, 150.0, 'norte', false, '4539-1111-2222-1234'),
-        (2, 9800.0, 'centro', true, '4539-1111-2222-5678'),
-        (3, 42.5, 'sur', false, '4539-1111-2222-9012'),
-        (4, 15200.0, 'norte', false, '4539-1111-2222-3456')
+        (1, 150.0, 'norte', false, 'AAAA-BBBB-CCCC-1234'),
+        (2, 9800.0, 'centro', true, 'AAAA-BBBB-CCCC-5678'),
+        (3, 42.5, 'sur', false, 'AAAA-BBBB-CCCC-9012'),
+        (4, 15200.0, 'norte', false, 'AAAA-BBBB-CCCC-3456')
     """)
     return f"{spark.table(TABLA).count()} filas insertadas"
 
@@ -373,15 +414,15 @@ probar("delta_crear", "Crear tabla Delta y escribir datos", crear_tabla,
 def historial_y_time_travel():
     """UPDATE + DESCRIBE HISTORY + VERSION AS OF: el ejercicio del Módulo 1."""
     _requiere_catalogo()
-    spark.sql(f"UPDATE {TABLA} SET es_fraude = true WHERE monto > 10000")
+    spark.sql(f"UPDATE {TABLA} SET marcado = true WHERE valor > 10000")
     versiones = spark.sql(f"DESCRIBE HISTORY {TABLA}").count()
     antes = spark.sql(f"SELECT COUNT(*) c FROM {TABLA} VERSION AS OF 0 "
-                      f"WHERE es_fraude = true").collect()[0][0]
+                      f"WHERE marcado = true").collect()[0][0]
     ahora = spark.sql(f"SELECT COUNT(*) c FROM {TABLA} "
-                      f"WHERE es_fraude = true").collect()[0][0]
+                      f"WHERE marcado = true").collect()[0][0]
     if versiones < 2:
         return False
-    return f"{versiones} versiones · fraudes antes={antes}, ahora={ahora}"
+    return f"{versiones} versiones · marcados antes={antes}, ahora={ahora}"
 
 
 probar("delta_time_travel", "Historial de versiones y time travel",
@@ -401,16 +442,16 @@ probar("delta_time_travel", "Historial de versiones y time travel",
 
 # COMMAND ----------
 
-VOLUMEN = f"{CATALOGO}.{schema_personal}._verificacion_vol"
+VOLUMEN = f"{CATALOGO}.{SCHEMA}._verificacion_vol"
 
 
 def crear_volumen():
     _requiere_catalogo()
     spark.sql(f"CREATE VOLUME IF NOT EXISTS {VOLUMEN}")
-    ruta = f"/Volumes/{CATALOGO}/{schema_personal}/_verificacion_vol/prueba.json"
+    ruta = f"/Volumes/{CATALOGO}/{SCHEMA}/_verificacion_vol/prueba.json"
     dbutils.fs.put(ruta, '{"id": 1, "monto": 150.0}\n{"id": 2, "monto": 300.0}',
                    overwrite=True)
-    n = spark.read.json(f"/Volumes/{CATALOGO}/{schema_personal}/_verificacion_vol/").count()
+    n = spark.read.json(f"/Volumes/{CATALOGO}/{SCHEMA}/_verificacion_vol/").count()
     return f"volumen creado, {n} filas leídas desde JSON"
 
 
@@ -426,7 +467,7 @@ probar("volumen", "Crear volumen y leer archivos", crear_volumen,
 # MAGIC **Es el corazón del Módulo 4**, el módulo de gobierno y seguridad. Ahí vas a hacer
 # MAGIC que la *misma consulta* devuelva *distintos resultados* según quién pregunta:
 # MAGIC
-# MAGIC - **Column masking** — un número de tarjeta que se ve como `****-****-****-1234`
+# MAGIC - **Column masking** — un dato sensible que se ve enmascarado, p. ej. `****-****-****-1234`
 # MAGIC - **Row-level security** — cada persona ve solo las filas de su región
 # MAGIC
 # MAGIC > 💡 Estas dos funcionaron en las pruebas que hicimos, **incluso en Free Edition**.
@@ -435,8 +476,8 @@ probar("volumen", "Crear volumen y leer archivos", crear_volumen,
 
 # COMMAND ----------
 
-FN_MASCARA = f"{CATALOGO}.{schema_personal}._mascara_tmp"
-FN_FILTRO = f"{CATALOGO}.{schema_personal}._filtro_tmp"
+FN_MASCARA = f"{CATALOGO}.{SCHEMA}._mascara_tmp"
+FN_FILTRO = f"{CATALOGO}.{SCHEMA}._filtro_tmp"
 
 
 def probar_masking():
@@ -447,9 +488,9 @@ def probar_masking():
         RETURN CASE WHEN is_account_group_member('z2h_pii_readers') THEN valor
                     ELSE CONCAT('****-****-****-', SUBSTRING(valor, -4)) END
     """)
-    spark.sql(f"ALTER TABLE {TABLA} ALTER COLUMN tarjeta SET MASK {FN_MASCARA}")
-    visto = spark.sql(f"SELECT tarjeta FROM {TABLA} LIMIT 1").collect()[0][0]
-    spark.sql(f"ALTER TABLE {TABLA} ALTER COLUMN tarjeta DROP MASK")
+    spark.sql(f"ALTER TABLE {TABLA} ALTER COLUMN dato_sensible SET MASK {FN_MASCARA}")
+    visto = spark.sql(f"SELECT dato_sensible FROM {TABLA} LIMIT 1").collect()[0][0]
+    spark.sql(f"ALTER TABLE {TABLA} ALTER COLUMN dato_sensible DROP MASK")
     # no basta con que el ALTER no falle: el dato tiene que salir enmascarado
     if not str(visto).startswith("****"):
         return False
@@ -485,12 +526,11 @@ probar("row_filter", "Row-level security (Módulo 4)", probar_row_filter,
 # MAGIC %md
 # MAGIC ## Paso 6 · Machine Learning
 # MAGIC
-# MAGIC En el **Módulo 6** vas a entrenar un modelo, registrarlo en Unity Catalog y usarlo
-# MAGIC para generar predicciones. Acá se comprueban las piezas de ese flujo.
-# MAGIC
-# MAGIC > 🟡 **La librería de AutoML solo existe en el ML Runtime clásico**, así que no está
-# MAGIC > en compute serverless. El resto del flujo —MLflow, registro en Unity Catalog y
-# MAGIC > predicción— sí funciona, y es lo que se trabaja en el módulo.
+# MAGIC En el **Módulo 6** vas a generar una predicción sobre tus datos y registrarla en
+# MAGIC Unity Catalog. Según el escenario de capstone, eso puede ser un modelo entrenado con
+# MAGIC MLflow o una predicción hecha con funciones de la plataforma. Acá se comprueban las
+# MAGIC piezas comunes: que **MLflow** esté disponible y que puedas usar el **registry de
+# MAGIC Unity Catalog**.
 
 # COMMAND ----------
 
@@ -503,29 +543,8 @@ probar("mlflow", "MLflow disponible", probar_mlflow,
        arreglo="Avísanos: el Módulo 6 depende de MLflow.", critico=False)
 
 
-def probar_automl():
-    """La librería `databricks.automl` solo existe en el ML Runtime clásico.
-
-    No está en compute serverless ni en Free Edition. Es la limitación más común que
-    encontramos, y **no afecta el aprendizaje del Módulo 6**: lo que importa ahí es el
-    ciclo de MLflow (tracking → registro en Unity Catalog → alias → predicción), y eso
-    funciona en todos los ambientes.
-    """
-    import databricks.automl  # noqa: F401
-    return "librería de AutoML disponible (ML Runtime clásico)"
-
-
-probar("automl", "Librería de AutoML (Módulo 6)", probar_automl,
-       arreglo="Es lo más habitual: la librería `databricks.automl` solo existe en el ML "
-               "Runtime clásico, así que no está en serverless ni en Free Edition. "
-               "NO afecta tu participación — el Módulo 6 se hace con MLflow, que funciona "
-               "en todos los ambientes y es lo que importa aprender: tracking, registro en "
-               "Unity Catalog, alias y predicción.",
-       critico=False)
-
-
 def probar_registro_modelos():
-    """Registrar modelos en UC es lo que hace el Módulo 6 al final."""
+    """Registrar objetos de ML en UC es parte del Módulo 6."""
     import mlflow
     mlflow.set_registry_uri("databricks-uc")
     return "registry de Unity Catalog configurado"
@@ -652,7 +671,7 @@ probar("apps", "Databricks Apps accesible (Módulo 7)", probar_apps,
 # ---- objetos de Unity Catalog ----
 for sentencia in (
     f"ALTER TABLE {TABLA} DROP ROW FILTER",
-    f"ALTER TABLE {TABLA} ALTER COLUMN tarjeta DROP MASK",
+    f"ALTER TABLE {TABLA} ALTER COLUMN dato_sensible DROP MASK",
     f"DROP TABLE IF EXISTS {TABLA}",
     f"DROP FUNCTION IF EXISTS {FN_MASCARA}",
     f"DROP FUNCTION IF EXISTS {FN_FILTRO}",
@@ -662,6 +681,9 @@ for sentencia in (
         spark.sql(sentencia)
     except Exception:
         pass   # si no existe o no aplica, no importa
+
+# ⚠️ El SCHEMA no se borra: es TU espacio de trabajo del taller (lo usarás en cada módulo).
+# Solo se eliminan los objetos de prueba que este notebook creó (todos con prefijo temporal).
 
 # ---- dashboard y espacio Genie de prueba ----
 # Se borran por id, no por nombre: así nunca se toca algo del participante.
@@ -712,7 +734,8 @@ L.append("=" * ancho)
 L.append("  DATABRICKS: FROM ZERO TO HERO — VERIFICACIÓN DE AMBIENTE")
 L.append("=" * ancho)
 L.append(f"  Usuario : {usuario}")
-L.append(f"  Schema  : {CATALOGO}.{schema_personal}")
+L.append(f"  Catálogo: {CATALOGO or '(no escrito)'}")
+L.append(f"  Schema  : {SCHEMA or '(no escrito)'}   ← úsalo IGUAL en todos los módulos")
 L.append(f"  Compute : {dbr}")
 L.append(f"  Fecha   : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
 L.append("-" * ancho)
@@ -794,13 +817,17 @@ print("-" * 78)
 # MAGIC **Copia el bloque de resumen de arriba y respóndenos el correo con eso pegado** —
 # MAGIC incluso si todo salió en verde. Es la única forma que tenemos de saber que estás listo.
 # MAGIC
+# MAGIC > 📝 **Y lo más importante para el día del taller:** anota tu **catálogo** y tu
+# MAGIC > **schema** (aparecen en el resumen). Son los que definiste aquí y **los vas a escribir
+# MAGIC > iguales en los widgets de cada módulo, del M1 al M7.** Todo tu proyecto vive ahí.
+# MAGIC
 # MAGIC ### Recordatorio de los tres caminos
 # MAGIC
 # MAGIC | | Opción | Cuándo |
 # MAGIC |---|---|---|
 # MAGIC | ⭐ | **Tu workspace de desarrollo o pruebas** | Si tu empresa ya usa Databricks. **Nunca producción.** |
 # MAGIC | ✅ | **Trial de 14 días** → https://www.databricks.com/try-databricks | Si no tienes cuenta. Todos los módulos completos. |
-# MAGIC | 🟡 | **Free Edition** (mismo enlace) | Última alternativa. Limita los Módulos 4 y 6. |
+# MAGIC | 🟡 | **Free Edition** (mismo enlace) | Última alternativa. Puede limitar el gobierno del Módulo 4. |
 # MAGIC
 # MAGIC ### ¿Dudas?
 # MAGIC

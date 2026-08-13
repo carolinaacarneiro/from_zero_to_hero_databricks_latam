@@ -19,22 +19,69 @@
 # MAGIC > ⚠️ **Material de aprendizaje — no es production-ready.** Datos 100% sintéticos. El último kilómetro —dashboard,
 # MAGIC > lenguaje natural, app— es igual en cualquier industria.
 
+# MAGIC %md
+# MAGIC # Paso 1 · Declara tu catálogo y tu schema
+# MAGIC
+# MAGIC **Corre la celda de abajo una vez** para que aparezcan dos campos arriba del notebook.
+# MAGIC Luego **escribe en ellos el catálogo y el schema donde estás trabajando** — los
+# MAGIC **mismos** que declaraste en el Módulo 1 y que vienes usando en todos los módulos.
+# MAGIC
+# MAGIC > ⚠️ **No adivinamos nada por ti.** Tú declaras explícitamente dónde trabajas, para que
+# MAGIC > no haya duda de en qué catálogo y schema estás. Si los dejas vacíos, el notebook se
+# MAGIC > detiene y te lo pide.
+
 # COMMAND ----------
 
-import re
-_usuario = spark.sql("SELECT current_user()").collect()[0][0]
-schema = "retail_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
-_ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-catalogo = None
-for c in [r[0] for r in spark.sql("SHOW CATALOGS").collect() if r[0].lower() not in _ocultos]:
-    try:
-        if schema in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{c}`").collect()]:
-            catalogo = c
-            break
-    except Exception:
-        continue
+# ═══ Declara aquí tu espacio de trabajo ═══════════════════════════════════
+# Crea los dos campos (arriba). Escribe en ellos tu catálogo y tu schema — los MISMOS
+# de siempre. No se infiere ni se adivina nada: tú decides dónde trabajas.
+dbutils.widgets.text("catalogo", "", "1 · Catálogo")
+dbutils.widgets.text("schema",   "", "2 · Schema")
+
+print("👆 Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba, y sigue con la "
+      "siguiente celda.")
+
+# COMMAND ----------
+
+# ═══ Lee y valida lo que declaraste ═══════════════════════════════════════
+catalogo = dbutils.widgets.get("catalogo").strip()
+schema = dbutils.widgets.get("schema").strip()
+usuario = spark.sql("SELECT current_user()").collect()[0][0]
+
+# 1 · no puede estar vacío — obliga a declarar conscientemente
+if not catalogo or not schema:
+    raise Exception(
+        "\n❌ Falta declarar tu espacio de trabajo.\n"
+        "   Escribe el CATÁLOGO y el SCHEMA en los campos de arriba (los mismos que usaste "
+        "en el Módulo 1) y vuelve a correr esta celda.\n"
+    )
+
+# 2 · el catálogo tiene que existir
+catalogos = [r[0] for r in spark.sql("SHOW CATALOGS").collect()]
+if catalogo not in catalogos:
+    _visibles = [c for c in catalogos
+                 if c.lower() not in ("system", "samples", "__databricks_internal", "hive_metastore")]
+    raise Exception(
+        f"\n❌ El catálogo '{catalogo}' no existe o no lo ves.\n"
+        f"   👉 Escribe uno de estos en el campo de arriba:\n"
+        + "".join(f"        · {c}\n" for c in _visibles)
+    )
+
+# 3 · el schema tiene que existir (lo creaste en el Módulo 1)
+schemas = [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{catalogo}`").collect()]
+if schema not in schemas:
+    raise Exception(
+        f"\n❌ El schema '{catalogo}.{schema}' no existe.\n"
+        f"   Corre los módulos anteriores con estos mismos valores primero, o corrige el nombre "
+        f"arriba.\n"
+    )
+
 spark.sql(f"USE `{catalogo}`.`{schema}`")
-print(f"📁 Trabajarás sobre: {catalogo}.{schema}")
+
+print(f"👤 Usuario       : {usuario}")
+print(f"📁 Trabajarás en : {catalogo}.{schema}")
+print("✅ Espacio declarado y verificado. Nadie más toca este schema.")
+print()
 print("   Tablas clave:")
 print("     · gold_ventas_diarias      (ventas históricas por día/país/categoría)")
 print("     · gold_ventas_producto     (ranking de productos)")
@@ -386,7 +433,47 @@ else:
 # MAGIC - Cuánto se **pronostica vender** en ese país los próximos 90 días
 # MAGIC
 # MAGIC 👀 Ese es el ciclo cerrado: del archivo crudo de la mañana a una **decisión de compra**,
-# MAGIC apoyada en el pronóstico que tú generaste con `ai_forecast` hace 30 minutos.
+# MAGIC apoyada en el pronóstico del modelo que **tú entrenaste** hace 30 minutos.
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # 🚀 Desafíos con Genie Code — acelera y experimenta
+# MAGIC
+# MAGIC Ya tienes el dashboard, el Genie y la App funcionando. Ahora **exprímelos con Genie Code**
+# MAGIC —el asistente de IA de Databricks (el ícono ✨ en el notebook, en el editor del dashboard
+# MAGIC y en el editor de la App)—. La idea: **describe lo que quieres en lenguaje natural y deja
+# MAGIC que Genie Code escriba el código o el SQL por ti.** No hay una respuesta única; el objetivo
+# MAGIC es probar cosas y ver qué tan rápido llegas.
+# MAGIC
+# MAGIC > 💡 **Cómo se usa:** abre Genie Code (✨), describe el cambio, revisa lo que propone
+# MAGIC > **antes** de aceptarlo, y aplícalo. Es cómo se trabaja hoy: tú diriges, la IA acelera.
+# MAGIC
+# MAGIC ## 🅰️ Mejora el dashboard (con Genie Code)
+# MAGIC Elige uno o varios. Pídeselo al asistente del dashboard o genera el SQL con Genie Code:
+# MAGIC - *"Agrega un KPI con las **unidades pronosticadas** totales de los próximos 90 días."*
+# MAGIC - *"Haz un gráfico de **top 10 productos por margen** (`gold_ventas_producto`)."*
+# MAGIC - *"Cruza histórico y pronóstico: **ventas reales vs. pronosticadas** por país en una línea."*
+# MAGIC - *"Agrega una tabla de **productos que necesitan reabastecer** ordenada por urgencia."*
+# MAGIC
+# MAGIC ## 🅱️ Mejora el espacio Genie
+# MAGIC - Agrégale otra tabla (`gold_pronostico_pais` o `gold_inventario_estado`) y pregúntale algo
+# MAGIC   que cruce ventas + pronóstico + inventario.
+# MAGIC - Añade **2 instructions más** para las preguntas que hoy falla, y vuelve a probar.
+# MAGIC - Pídele una pregunta difícil (*"¿qué categoría crecerá más el próximo trimestre?"*) y, si
+# MAGIC   falla, **usa Genie Code para escribir el SQL** y compáralo.
+# MAGIC
+# MAGIC ## 🅲️ Mejora la App (con Genie Code, en `app/app.py`)
+# MAGIC Abre `app/app.py`, selecciona el código y pídele a Genie Code:
+# MAGIC - *"Agrega un filtro por **categoría** además del de país."*
+# MAGIC - *"Muestra, junto a cada producto, cuántas **unidades comprar** para cubrir 30 días."*
+# MAGIC - *"Agrega un gráfico del **pronóstico de ventas** del país seleccionado."*
+# MAGIC - *"Cambia el diseño: tarjetas por producto y un color de marca en el título."*
+# MAGIC
+# MAGIC > 🏆 **Reto abierto:** en 15 minutos, ¿cuánto puedes mejorar tu App **sin escribir código a
+# MAGIC > mano** — solo describiéndole a Genie Code lo que quieres? Comparte con la sala tu mejor
+# MAGIC > idea. La meta no es terminar algo perfecto, es **sentir cuánto acelera** tener la IA como
+# MAGIC > copiloto.
 
 # COMMAND ----------
 

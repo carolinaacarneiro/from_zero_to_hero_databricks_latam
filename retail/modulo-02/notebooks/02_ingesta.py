@@ -37,70 +37,67 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 1 · Tu espacio de trabajo
+# MAGIC # Paso 1 · Declara tu catálogo y tu schema
 # MAGIC
-# MAGIC **Celda A** crea los campos y busca dónde quedaron tus datos. **Celda B** los lee. Usa
-# MAGIC los **mismos valores** que en `00_generar_datos`.
+# MAGIC **Corre la celda de abajo una vez** para que aparezcan dos campos arriba del notebook.
+# MAGIC Luego **escribe en ellos el catálogo y el schema donde estás trabajando** — los
+# MAGIC **mismos** que declaraste en el Módulo 1 (`00_generar_datos`) y que vienes usando en
+# MAGIC todos los módulos.
+# MAGIC
+# MAGIC > ⚠️ **No adivinamos nada por ti.** Tú declaras explícitamente dónde trabajas, para que
+# MAGIC > no haya duda de en qué catálogo y schema quedan tus datos. Si los dejas vacíos, el
+# MAGIC > notebook se detiene y te lo pide.
 
 # COMMAND ----------
 
-# ═══ CELDA A · crear los campos ═══════════════════════════════════════════
-import re
+# ═══ Declara aquí tu espacio de trabajo ═══════════════════════════════════
+# Crea los dos campos (arriba). Escribe en ellos tu catálogo y tu schema — los MISMOS
+# de siempre. No se infiere ni se adivina nada: tú decides dónde trabajas.
+dbutils.widgets.text("catalogo", "", "1 · Catálogo")
+dbutils.widgets.text("schema",   "", "2 · Schema")
 
-_usuario = spark.sql("SELECT current_user()").collect()[0][0]
-_schema_sugerido = "retail_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
-
-_ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-_disponibles = [r[0] for r in spark.sql("SHOW CATALOGS").collect()
-                if r[0].lower() not in _ocultos]
-
-_encontrado = None
-for _c in _disponibles:
-    try:
-        if _schema_sugerido in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{_c}`").collect()]:
-            _encontrado = _c
-            break
-    except Exception:
-        continue
-
-dbutils.widgets.text("catalogo", _encontrado or (_disponibles[0] if _disponibles else ""),
-                     "1 · Catálogo")
-dbutils.widgets.text("schema", _schema_sugerido, "2 · Schema")
-
-print("👆 Aparecieron dos campos ARRIBA del notebook.\n")
-if _encontrado:
-    print(f"   ✅ Encontré tu schema del taller: {_encontrado}.{_schema_sugerido}")
-    print("      Los campos ya quedaron listos. Sigue con la celda B.")
-else:
-    print(f"   ⚠️  No encontré un schema '{_schema_sugerido}'. Revisa los campos.")
-    print("   📦 Catálogos disponibles:", ", ".join(_disponibles))
+print("👆 Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba, y sigue con la "
+      "siguiente celda.")
 
 # COMMAND ----------
 
-# ═══ CELDA B · leer los campos y comprobar ════════════════════════════════
+# ═══ Lee y valida lo que declaraste ═══════════════════════════════════════
 catalogo = dbutils.widgets.get("catalogo").strip()
 schema = dbutils.widgets.get("schema").strip()
-# se recalcula acá para que esta celda sea autosuficiente (re-ejecutable sola)
 usuario = spark.sql("SELECT current_user()").collect()[0][0]
 
-catalogos = [r[0] for r in spark.sql("SHOW CATALOGS").collect()]
-if catalogo not in catalogos:
+# 1 · no puede estar vacío — obliga a declarar conscientemente
+if not catalogo or not schema:
     raise Exception(
-        f"\n❌ El catálogo '{catalogo}' no existe.\n"
-        f"   👉 Escribe uno de estos en el campo de arriba:\n"
-        + "".join(f"        · {c}\n" for c in _disponibles)
+        "\n❌ Falta declarar tu espacio de trabajo.\n"
+        "   Escribe el CATÁLOGO y el SCHEMA en los campos de arriba (los mismos que usaste "
+        "en el Módulo 1) y vuelve a correr esta celda.\n"
     )
 
+# 2 · el catálogo tiene que existir
+catalogos = [r[0] for r in spark.sql("SHOW CATALOGS").collect()]
+if catalogo not in catalogos:
+    _visibles = [c for c in catalogos
+                 if c.lower() not in ("system", "samples", "__databricks_internal", "hive_metastore")]
+    raise Exception(
+        f"\n❌ El catálogo '{catalogo}' no existe o no lo ves.\n"
+        f"   👉 Escribe uno de estos en el campo de arriba:\n"
+        + "".join(f"        · {c}\n" for c in _visibles)
+    )
+
+# 3 · el schema tiene que existir (lo creaste en el M1)
 schemas = [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{catalogo}`").collect()]
 if schema not in schemas:
     raise Exception(
         f"\n❌ El schema '{catalogo}.{schema}' no existe.\n"
-        f"   ¿Corriste 00_generar_datos con estos mismos valores? Córrelo primero.\n"
+        f"   Corre 00_generar_datos con estos mismos valores primero, o corrige el nombre "
+        f"arriba.\n"
     )
 
 spark.sql(f"USE `{catalogo}`.`{schema}`")
 RAW = f"/Volumes/{catalogo}/{schema}/raw"
 
+# comprobar que los archivos crudos están ahí
 try:
     n = len([f for f in dbutils.fs.ls(f"{RAW}/ventas") if f.name.endswith(".json")])
     assert n > 0
@@ -111,10 +108,10 @@ except Exception:
     )
 
 print(f"👤 Usuario   : {usuario}")
-print(f"📁 Schema    : {catalogo}.{schema}")
+print(f"📁 Trabajarás en : {catalogo}.{schema}")
 print(f"🗂️  Archivos  : {RAW}  ({n} archivos de ventas)")
 print()
-print("✅ Todo listo. Este es tu espacio: nadie más lo toca.")
+print("✅ Espacio declarado y verificado. Nadie más toca este schema.")
 
 # COMMAND ----------
 

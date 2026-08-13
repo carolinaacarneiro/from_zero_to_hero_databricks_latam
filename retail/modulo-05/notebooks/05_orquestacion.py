@@ -58,18 +58,21 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 3 · 📝 TU TURNO — agrega un parámetro
+# MAGIC # Paso 3 · 📝 TU TURNO — agrega parámetros
 # MAGIC
 # MAGIC Un job de producción casi siempre recibe **parámetros** — la fecha a procesar, el
-# MAGIC ambiente, etc.
+# MAGIC ambiente, etc. Vamos a agregar tres.
 # MAGIC
 # MAGIC 1. En la configuración del job, sección **Parameters** (o *Job parameters*), agrega:
-# MAGIC    - **Key**: `fecha_proceso`
-# MAGIC    - **Value**: `2026-03-01`
-# MAGIC 2. La tarea `validacion` lo va a leer con `dbutils.widgets.get("fecha_proceso")`.
+# MAGIC    - **Key**: `catalogo` | **Value**: `<tu_catalogo>` *(el que usaste en el Módulo 1)*
+# MAGIC    - **Key**: `schema` | **Value**: `<tu_schema>` *(el que usaste en el Módulo 1)*
+# MAGIC    - **Key**: `fecha_proceso` | **Value**: `2026-03-01`
 # MAGIC
-# MAGIC > 💡 Así el mismo job sirve para reprocesar cualquier día: cambias el parámetro al
-# MAGIC > lanzarlo, sin tocar el código.
+# MAGIC 2. Las tareas del job (particularmente `validacion`) los van a leer con `dbutils.widgets.get()`.
+# MAGIC
+# MAGIC > 💡 Así el mismo job sirve para reprocesar cualquier día y cualquier espacio (catálogo/schema):
+# MAGIC > cambias los parámetros al lanzarlo, sin tocar el código. Los notebooks ya están preparados
+# MAGIC > para leerlos.
 
 # COMMAND ----------
 

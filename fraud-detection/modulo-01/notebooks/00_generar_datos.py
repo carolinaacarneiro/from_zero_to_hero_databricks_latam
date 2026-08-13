@@ -44,52 +44,46 @@
 # MAGIC
 # MAGIC | Campo | Qué poner |
 # MAGIC |---|---|
-# MAGIC | **catalogo** | El catálogo donde quieres trabajar. Se propone uno que ya existe |
-# MAGIC | **schema** | Tu schema personal. Se propone uno derivado de tu usuario |
+# MAGIC | **catalogo** | El catálogo donde vas a trabajar. **Debe existir de antemano.** En Free Edition suele ser `workspace` |
+# MAGIC | **schema** | El nombre de tu espacio de trabajo. Lo eliges tú (p. ej. `z2h_ana`). **Se crea si no existe** |
 # MAGIC
-# MAGIC **El schema se crea si no existe. El catálogo debe existir de antemano** (usamos uno que ya
-# MAGIC esté disponible).
-# MAGIC
-# MAGIC > 💡 **Free Edition / muchos workspaces corporativos:** casi siempre **no se pueden crear
-# MAGIC > catálogos**. En Free Edition se usa el catálogo **`workspace`**. Por eso proponemos por
-# MAGIC > defecto un catálogo que **ya existe** — no intentamos crear uno nuevo. Si el que quieres no
-# MAGIC > aparece, escríbelo, pero tiene que existir ya.
+# MAGIC > ⭐ **Este es el momento más importante del día para no tener problemas después.**
+# MAGIC > El catálogo y el schema que declares aquí son los que vas a usar en **todos** los
+# MAGIC > módulos (M1 a M7). **Anótalos** y escríbelos **idénticos** en cada notebook. La causa
+# MAGIC > #1 de errores en el taller es usar un nombre distinto en cada módulo.
+# MAGIC >
+# MAGIC > ⚠️ **No adivinamos nada por ti.** Los campos empiezan **vacíos**: tú declaras dónde
+# MAGIC > trabajas. Si los dejas vacíos, el notebook se detiene y te lo pide.
+# MAGIC >
+# MAGIC > 💡 **Sobre el catálogo:** casi ningún workspace deja crear catálogos. Usa uno que
+# MAGIC > **ya exista** (en Free Edition, `workspace`). Si no sabes cuál, esta celda te lista
+# MAGIC > los que tienes disponibles.
 
 # COMMAND ----------
 
-# ═══ CELDA A · crear los campos ═══════════════════════════════════════════
-# Ejecuta esta celda. Después mira los dos campos que aparecen ARRIBA del notebook,
-# ajústalos si hace falta, y sigue con la celda B.
+# ═══ CELDA A · crea los campos y mira qué catálogos existen ═══════════════
+# Ejecuta esta celda. Después escribe tu catálogo y tu schema en los campos de ARRIBA,
+# y sigue con la celda B.
 
 import re
 
-# valor propuesto para el schema, derivado del usuario
-_usuario = spark.sql("SELECT current_user()").collect()[0][0]
-_schema_sugerido = "fin_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
+# Campos VACÍOS: tú declaras explícitamente dónde trabajas. No se infiere ni se propone nada.
+dbutils.widgets.text("catalogo", "", "1 · Catálogo")
+dbutils.widgets.text("schema",   "", "2 · Schema (tu espacio de trabajo)")
 
-# se descartan los catálogos del sistema: no son para trabajar en ellos
+# solo para AYUDARTE a elegir: se listan los catálogos que ya existen (no se elige por ti)
 _ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
 _disponibles = [r[0] for r in spark.sql("SHOW CATALOGS").collect()
                 if r[0].lower() not in _ocultos]
 
-# Catálogo por defecto: 'workspace' si existe (es el de Free Edition y el más común en UC);
-# si no, el primero disponible. NO proponemos crear uno nuevo — casi ningún workspace lo permite.
-_cat_default = "workspace" if "workspace" in _disponibles else (_disponibles[0] if _disponibles else "workspace")
-
-dbutils.widgets.text("catalogo", _cat_default, "1 · Catálogo")
-dbutils.widgets.text("schema", _schema_sugerido, "2 · Schema (tu espacio personal)")
-
-print("👆 Ya aparecieron los dos campos ARRIBA de este notebook.\n")
-print(f"   Usuario           : {_usuario}")
-print(f"   Catálogo propuesto: {_cat_default}")
-print(f"   Schema propuesto  : {_schema_sugerido}")
-print()
-print("📦 Catálogos que ya existen en este workspace (elige uno de estos):")
+print("👆 Aparecieron dos campos ARRIBA. Escribe en ellos tu CATÁLOGO y tu SCHEMA.\n")
+print("📦 Catálogos que ya existen en este workspace (elige uno de estos para el campo 1):")
 for c in _disponibles:
     print(f"     · {c}")
 print()
 print("💡 En Free Edition usa 'workspace'. El notebook NO crea catálogos: usa uno que ya exista.")
-print("Cuando estés listo, sigue con la celda B.")
+print("   El SCHEMA sí lo creamos: escribe el nombre que quieras (p. ej. z2h_tu_nombre).")
+print("⭐ ANOTA los dos nombres: los usarás IGUALES en todos los módulos. Sigue con la celda B.")
 
 # COMMAND ----------
 
@@ -99,8 +93,16 @@ print("Cuando estés listo, sigue con la celda B.")
 catalogo = dbutils.widgets.get("catalogo").strip()
 schema = dbutils.widgets.get("schema").strip()
 
+if not catalogo or not schema:
+    raise Exception(
+        "\n❌ Falta declarar tu espacio de trabajo.\n"
+        "   Escribe el CATÁLOGO y el SCHEMA en los campos de arriba y vuelve a correr.\n"
+        "   ⭐ Anótalos: son los que usarás en TODOS los módulos del taller.\n"
+    )
+
 print(f"📦 Catálogo : {catalogo}")
 print(f"📁 Schema   : {schema}")
+print("⭐ Anota estos dos nombres — los repetirás IGUALES en cada módulo (M1 a M7).")
 
 # COMMAND ----------
 

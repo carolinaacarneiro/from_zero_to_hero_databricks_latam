@@ -52,27 +52,76 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 0 · Tu espacio y tu identidad simulada
+# MAGIC # Paso 1 · Declara tu catálogo y tu schema
+# MAGIC
+# MAGIC **Corre la celda de abajo una vez** para que aparezcan dos campos arriba del notebook.
+# MAGIC Luego **escribe en ellos el catálogo y el schema donde estás trabajando** — los
+# MAGIC **mismos** que declaraste en el Módulo 1 y que vienes usando en todos los módulos.
+# MAGIC
+# MAGIC > ⚠️ **No adivinamos nada por ti.** Tú declaras explícitamente dónde trabajas, para que
+# MAGIC > no haya duda de en qué catálogo y schema estás. Si los dejas vacíos, el notebook se
+# MAGIC > detiene y te lo pide.
+
+# COMMAND ----------
+
+# ═══ Declara aquí tu espacio de trabajo ═══════════════════════════════════
+# Crea los dos campos (arriba). Escribe en ellos tu catálogo y tu schema — los MISMOS
+# de siempre. No se infiere ni se adivina nada: tú decides dónde trabajas.
+dbutils.widgets.text("catalogo", "", "1 · Catálogo")
+dbutils.widgets.text("schema",   "", "2 · Schema")
+
+print("👆 Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba, y sigue con la "
+      "siguiente celda.")
+
+# COMMAND ----------
+
+# ═══ Lee y valida lo que declaraste ═══════════════════════════════════════
+catalogo = dbutils.widgets.get("catalogo").strip()
+schema = dbutils.widgets.get("schema").strip()
+usuario = spark.sql("SELECT current_user()").collect()[0][0]
+
+# 1 · no puede estar vacío — obliga a declarar conscientemente
+if not catalogo or not schema:
+    raise Exception(
+        "\n❌ Falta declarar tu espacio de trabajo.\n"
+        "   Escribe el CATÁLOGO y el SCHEMA en los campos de arriba (los mismos que usaste "
+        "en el Módulo 1) y vuelve a correr esta celda.\n"
+    )
+
+# 2 · el catálogo tiene que existir
+catalogos = [r[0] for r in spark.sql("SHOW CATALOGS").collect()]
+if catalogo not in catalogos:
+    _visibles = [c for c in catalogos
+                 if c.lower() not in ("system", "samples", "__databricks_internal", "hive_metastore")]
+    raise Exception(
+        f"\n❌ El catálogo '{catalogo}' no existe o no lo ves.\n"
+        f"   👉 Escribe uno de estos en el campo de arriba:\n"
+        + "".join(f"        · {c}\n" for c in _visibles)
+    )
+
+# 3 · el schema tiene que existir (lo creaste en el Módulo 1)
+schemas = [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{catalogo}`").collect()]
+if schema not in schemas:
+    raise Exception(
+        f"\n❌ El schema '{catalogo}.{schema}' no existe.\n"
+        f"   Corre los módulos anteriores (M1-M3) con estos mismos valores primero, o corrige el nombre "
+        f"arriba.\n"
+    )
+
+spark.sql(f"USE `{catalogo}`.`{schema}`")
+
+print(f"👤 Usuario       : {usuario}")
+print(f"📁 Trabajarás en : {catalogo}.{schema}")
+print("✅ Espacio declarado y verificado. Nadie más toca este schema.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Paso 0 · Tu identidad simulada
 # MAGIC Ejecuta esta celda. Arriba aparecen dos campos: elige tu **región** y si eres
 # MAGIC **lector de PII**. Podrás cambiarlos más adelante para ver el efecto.
 
 # COMMAND ----------
-
-import re
-_usuario = spark.sql("SELECT current_user()").collect()[0][0]
-schema = "fin_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
-_ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-catalogo = None
-for c in [r[0] for r in spark.sql("SHOW CATALOGS").collect() if r[0].lower() not in _ocultos]:
-    try:
-        if schema in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{c}`").collect()]:
-            catalogo = c
-            break
-    except Exception:
-        continue
-if catalogo is None:
-    raise Exception("No encontré tu schema del taller. ¿Corriste los módulos 2 y 3?")
-spark.sql(f"USE `{catalogo}`.`{schema}`")
 
 # dos campos que simulan "quién eres" — sin depender de grupos del workspace
 dbutils.widgets.dropdown("mi_region", "centro", ["norte", "centro", "sur"], "1 · Tu región")
@@ -81,8 +130,6 @@ dbutils.widgets.dropdown("soy_lector_pii", "no", ["no", "sí"], "2 · ¿Lees dat
 mi_region = dbutils.widgets.get("mi_region")
 soy_lector_pii = dbutils.widgets.get("soy_lector_pii") == "sí"
 
-print(f"👤 Usuario        : {_usuario}")
-print(f"📁 Schema         : {catalogo}.{schema}")
 print(f"🌎 Tu región      : {mi_region}")
 print(f"🔓 Lector de PII  : {'sí' if soy_lector_pii else 'no'}")
 print()

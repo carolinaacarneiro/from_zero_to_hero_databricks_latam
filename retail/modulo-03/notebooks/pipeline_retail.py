@@ -17,49 +17,51 @@
 # MAGIC
 # MAGIC | Dataset | Estado |
 # MAGIC |---|---|
-# MAGIC | `bronze_pl_*` | ✅ ya declarados abajo |
-# MAGIC | `silver_ventas` | 📝 **TU TURNO** |
-# MAGIC | `gold_ventas_diarias` | 📝 **TU TURNO** (la serie que pronosticará el Módulo 6) |
-# MAGIC | `gold_ventas_producto`, `gold_inventario_estado` | ✅ ya resueltos (alimentan el dashboard) |
+# MAGIC | `bronze_pl_ventas`, `bronze_pl_productos`, `bronze_pl_inventario` | ✅ ya declaradas |
+# MAGIC | `silver_ventas` | ✅ ya declarada |
+# MAGIC | `gold_ventas_diarias`, `gold_ventas_producto`, `gold_inventario_estado` | ✅ ya declaradas |
+# MAGIC
+# MAGIC > 📖 **El código ya está completo.** No hay nada que editar: el foco del módulo es **entender**
+# MAGIC > cómo se declara un pipeline, leer cada capa, entender las **expectativas de calidad**, crear
+# MAGIC > el pipeline en la UI, correrlo y leer el DAG y el panel de calidad. El guía `03_guia_pipeline`
+# MAGIC > te lleva paso a paso.
 # MAGIC
 # MAGIC > 💡 **¿Por qué `bronze_pl_*`?** En el Módulo 2 ya creaste `bronze_ventas` a mano con Auto
 # MAGIC > Loader. Este pipeline crea **su propia** bronze (con otro nombre) para no chocar. En un
 # MAGIC > proyecto real tendrías **uno** de los dos caminos, no ambos; acá los ves los dos para
-# MAGIC > aprender.
+# MAGIC > aprender. Silver y gold sí usan el nombre canónico: son las que consumen los módulos siguientes.
 # MAGIC
 # MAGIC > ⚠️ **Material de aprendizaje — no es production-ready.** Datos 100% sintéticos.
 
 # COMMAND ----------
 
 import dlt
-import re
 from pyspark.sql import functions as F
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ¿Dónde están los archivos crudos? Se detecta solo desde tu usuario.
+# ¿Dónde están los archivos crudos?
+#
+# El pipeline usa el CATÁLOGO y el SCHEMA que declaraste en la UI del pipeline, en
+# "Default location for data assets" (Default catalog / Default schema). Son los mismos
+# donde el pipeline escribe sus tablas — y donde vive tu volumen `raw`. No se infiere nada:
+# tú los defines en la configuración del pipeline.
 # ═══════════════════════════════════════════════════════════════════════════
 
+_CATALOGO = spark.sql("SELECT current_catalog()").collect()[0][0]
+_SCHEMA = spark.sql("SELECT current_schema()").collect()[0][0]
 
-def _detectar_raw():
-    try:
-        v = spark.conf.get("z2h.raw_path")
-        if v:
-            return v
-    except Exception:
-        pass
-    usuario = spark.sql("SELECT current_user()").collect()[0][0]
-    schema = "retail_" + re.sub(r"[^a-z0-9_]", "_", usuario.split("@")[0].lower())
-    ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-    for c in [r[0] for r in spark.sql("SHOW CATALOGS").collect() if r[0].lower() not in ocultos]:
-        try:
-            if schema in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{c}`").collect()]:
-                return f"/Volumes/{c}/{schema}/raw"
-        except Exception:
-            continue
-    raise Exception("No pude detectar tu volumen raw. Corre los módulos 0-2 primero.")
+# red de seguridad: si el default quedó sin configurar (hive_metastore/default), avisa claro
+if (not _CATALOGO or not _SCHEMA
+        or _CATALOGO.lower() in ("hive_metastore", "spark_catalog")
+        or _SCHEMA.lower() == "default"):
+    raise Exception(
+        f"El destino del pipeline no está configurado (catálogo='{_CATALOGO}', "
+        f"schema='{_SCHEMA}'). En la UI del pipeline, define 'Default catalog' y "
+        f"'Default schema' con tus valores (los mismos del M1/M2) en "
+        f"'Default location for data assets'."
+    )
 
-
-RAW = _detectar_raw()
+RAW = f"/Volumes/{_CATALOGO}/{_SCHEMA}/raw"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -115,18 +117,19 @@ def bronze_pl_inventario():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 📝 TU TURNO 1 · CAPA SILVER
+# CAPA SILVER — el dato se vuelve CONFIABLE
 #
-# Declara silver_ventas: la bronze limpia, tipada y enriquecida con datos del producto.
-# Ya vienen las 3 expectativas — tú completas el cuerpo.
+# silver_ventas = bronze limpia, tipada y enriquecida con datos del producto.
+# Lee de las bronze de ESTE pipeline: dlt.read_stream() para la venta (stream incremental),
+# dlt.read() para el catálogo de productos (dimensión estática). Esas llamadas crean las
+# DEPENDENCIAS del DAG — nadie escribe el orden.
 #
-# Lo que tiene que hacer:
-#   · deduplicar por venta_id
-#   · unir con los productos por producto_id (left join) para traer categoria, marca,
-#     precio_lista y costo_unitario
-#   · tipar 'fecha' de string a timestamp   ← el pendiente del M1 y M2
-#   · calcular 'utilidad' = monto - (cantidad * costo_unitario)
-#   · quedarte con las columnas útiles
+# ── Las 3 EXPECTATIVAS de calidad (lo más importante de leer) ──────────────
+#   @dlt.expect_or_drop("id_valido", ...)       → DESCARTA la fila si no cumple
+#   @dlt.expect_or_drop("cantidad_positiva", ...) → DESCARTA (limpia el ~2% inválido plantado)
+#   @dlt.expect("monto_positivo", ...)         → solo AVISA (la fila pasa igual)
+# La decisión de diseño: cantidad ≤ 0 es basura que ensucia los agregados → se descarta;
+# un monto raro es algo que quieres SABER sin perder la fila → solo se avisa.
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -141,32 +144,29 @@ def silver_ventas():
     v = dlt.read_stream("bronze_pl_ventas")
     productos = dlt.read("bronze_pl_productos").drop("_datos_rescatados")
 
-    # 📝 COMPLETA: deduplica, une con productos, tipa la fecha, calcula utilidad, selecciona.
-    #
-    # return (
-    #     v.dropDuplicates(["venta_id"])
-    #      .join(productos, "producto_id", "left")
-    #      .withColumn("fecha", F.to_timestamp("fecha"))
-    #      .withColumn("utilidad",
-    #                  F.round(F.col("monto") - F.col("cantidad") * F.col("costo_unitario"), 2))
-    #      .select(
-    #          "venta_id", "fecha", "producto_id", "nombre_producto", "categoria",
-    #          "subcategoria", "marca", "pais", "canal", "cantidad", "precio_unitario",
-    #          "descuento_pct", "monto", "costo_unitario", "utilidad", "_archivo_origen",
-    #      )
-    # )
-    raise NotImplementedError("Completa silver_ventas — ver la solución en el guía")
+    return (
+        v.dropDuplicates(["venta_id"])
+        .join(productos, "producto_id", "left")
+        .withColumn("fecha", F.to_timestamp("fecha"))
+        .withColumn("utilidad",
+                    F.round(F.col("monto") - F.col("cantidad") * F.col("costo_unitario"), 2))
+        .select(
+            "venta_id", "fecha", "producto_id", "nombre_producto", "categoria",
+            "subcategoria", "marca", "pais", "canal", "cantidad", "precio_unitario",
+            "descuento_pct", "monto", "costo_unitario", "utilidad", "_archivo_origen",
+        )
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 📝 TU TURNO 2 · CAPA GOLD — la serie diaria del pronóstico
+# CAPA GOLD — el dato se vuelve ÚTIL para el negocio
 #
-# Declara gold_ventas_diarias: silver agregada por DÍA × país × categoría.
-# Esta es la tabla que el Módulo 6 le va a dar a ai_forecast: una serie de tiempo limpia.
-# Es una vista materializada (recalcula el agregado), no un stream.
-#
-# Métricas por grupo (día, pais, categoria):
-#   unidades (sum cantidad) · monto (sum monto) · utilidad (sum utilidad) · lineas (count)
+# gold_ventas_diarias = silver agregada por día × país × categoría.
+# Es una MATERIALIZED VIEW: recalcula el agregado para reflejar el estado actual (no es un stream).
+# Lee de silver con dlt.read() → gold depende de silver en el DAG.
+# Esta es la serie de tiempo que el Módulo 6 le dará a ai_forecast para pronosticar.
+# Responde: ¿cuántas unidades se vendieron, por cuánto dinero, con qué utilidad, cada día
+# en cada país y categoría?
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -177,19 +177,16 @@ def silver_ventas():
 def gold_ventas_diarias():
     s = dlt.read("silver_ventas")
 
-    # 📝 COMPLETA: agrupa por fecha (solo el día), pais y categoria.
-    #
-    # return (
-    #     s.withColumn("dia", F.to_date("fecha"))
-    #      .groupBy("dia", "pais", "categoria")
-    #      .agg(
-    #          F.sum("cantidad").alias("unidades"),
-    #          F.round(F.sum("monto"), 2).alias("monto"),
-    #          F.round(F.sum("utilidad"), 2).alias("utilidad"),
-    #          F.count("*").alias("lineas"),
-    #      )
-    # )
-    raise NotImplementedError("Completa gold_ventas_diarias — ver la solución en el guía")
+    return (
+        s.withColumn("dia", F.to_date("fecha"))
+        .groupBy("dia", "pais", "categoria")
+        .agg(
+            F.sum("cantidad").alias("unidades"),
+            F.round(F.sum("monto"), 2).alias("monto"),
+            F.round(F.sum("utilidad"), 2).alias("utilidad"),
+            F.count("*").alias("lineas"),
+        )
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

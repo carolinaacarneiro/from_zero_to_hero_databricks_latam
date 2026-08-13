@@ -19,9 +19,13 @@
 # MAGIC
 # MAGIC | Dataset | Estado |
 # MAGIC |---|---|
-# MAGIC | `bronze_pl_transacciones`, `bronze_pl_clientes` | ✅ ya declarados abajo |
-# MAGIC | `silver_transacciones` | 📝 **TU TURNO** |
-# MAGIC | `gold_riesgo_diario` | 📝 **TU TURNO** |
+# MAGIC | `bronze_pl_transacciones`, `bronze_pl_clientes` | ✅ ya declaradas |
+# MAGIC | `silver_transacciones` | ✅ ya declarada |
+# MAGIC | `gold_riesgo_diario` | ✅ ya declarada |
+# MAGIC
+# MAGIC > 📖 **El código ya está completo.** No hay nada que editar: el foco del módulo es
+# MAGIC > **entender** cómo se declara un pipeline, leer cada capa y, sobre todo, entender las
+# MAGIC > **expectativas de calidad**. El guía `03_guia_pipeline` te lleva paso a paso.
 # MAGIC
 # MAGIC > 💡 **¿Por qué la bronze se llama `bronze_pl_*` y no `bronze_*`?** Porque en el Módulo 2
 # MAGIC > ya creaste `bronze_transacciones` a mano con Auto Loader. Este pipeline crea **su
@@ -35,34 +39,23 @@
 # COMMAND ----------
 
 import dlt
-import re
 from pyspark.sql import functions as F
 
-# ═══════════════════════════════════════════════════════════════════════════
-# ¿Dónde están los archivos crudos? Se detecta solo desde tu usuario.
-# ═══════════════════════════════════════════════════════════════════════════
+# Usa el Default catalog / Default schema que declaraste en la UI del pipeline
+# ("Default location for data assets"). No se infiere nada por ti.
+_CATALOGO = spark.sql("SELECT current_catalog()").collect()[0][0]
+_SCHEMA = spark.sql("SELECT current_schema()").collect()[0][0]
 
+if (not _CATALOGO or not _SCHEMA
+        or _CATALOGO.lower() in ("hive_metastore", "spark_catalog")
+        or _SCHEMA.lower() == "default"):
+    raise Exception(
+        f"El destino del pipeline no está configurado (catálogo='{_CATALOGO}', "
+        f"schema='{_SCHEMA}'). En la UI del pipeline, define 'Default catalog' y "
+        f"'Default schema' en 'Default location for data assets'."
+    )
 
-def _detectar_raw():
-    try:
-        v = spark.conf.get("z2h.raw_path")
-        if v:
-            return v
-    except Exception:
-        pass
-    usuario = spark.sql("SELECT current_user()").collect()[0][0]
-    schema = "fin_" + re.sub(r"[^a-z0-9_]", "_", usuario.split("@")[0].lower())
-    ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-    for c in [r[0] for r in spark.sql("SHOW CATALOGS").collect() if r[0].lower() not in ocultos]:
-        try:
-            if schema in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{c}`").collect()]:
-                return f"/Volumes/{c}/{schema}/raw"
-        except Exception:
-            continue
-    raise Exception("No pude detectar tu volumen raw. Corre los módulos 0-2 primero.")
-
-
-RAW = _detectar_raw()
+RAW = f"/Volumes/{_CATALOGO}/{_SCHEMA}/raw"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -105,17 +98,19 @@ def bronze_pl_clientes():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 📝 TU TURNO 1 · CAPA SILVER
+# CAPA SILVER — el dato se vuelve CONFIABLE
 #
-# Declara silver_transacciones: la bronze limpia, tipada y enriquecida con los datos
-# del cliente. Ya vienen las 3 expectativas — tú completas el cuerpo.
+# silver_transacciones = bronze limpia, tipada y enriquecida con datos del cliente.
+# Lee de las bronze de ESTE pipeline: dlt.read_stream() para lo que crece (streaming),
+# dlt.read() para la dimensión estática de clientes. Esas llamadas son las que crean las
+# DEPENDENCIAS del DAG — nadie escribe el orden.
 #
-# Lee las bronze de ESTE pipeline con dlt.read_stream / dlt.read.
-# Lo que tiene que hacer:
-#   · deduplicar por transaccion_id
-#   · unir con los clientes por cliente_id (left join)
-#   · tipar 'fecha' de string a timestamp   ← el pendiente del M1 y M2
-#   · quedarte con las columnas útiles
+# ── Las 3 EXPECTATIVAS de calidad (lo más importante de leer) ──────────────
+#   @dlt.expect_or_drop("id_valido", ...)       → DESCARTA la fila si no cumple
+#   @dlt.expect_or_drop("monto_positivo", ...)  → DESCARTA (limpia el ~2% inválido plantado)
+#   @dlt.expect("moneda_conocida", ...)         → solo AVISA (la fila pasa igual)
+# La decisión de diseño: monto ≤ 0 es basura que ensucia los agregados → se descarta;
+# una moneda rara es algo que quieres SABER sin perder la fila → solo se avisa.
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -132,31 +127,27 @@ def silver_transacciones():
     # genere una columna 'region' ambigua (existe en las dos tablas)
     clientes = dlt.read("bronze_pl_clientes").drop("region", "_datos_rescatados")
 
-    # 📝 COMPLETA: deduplica, une con clientes, tipa la fecha y selecciona columnas.
-    #
-    # return (
-    #     tx.dropDuplicates(["transaccion_id"])
-    #       .join(clientes, "cliente_id", "left")
-    #       .withColumn("fecha", F.to_timestamp("fecha"))
-    #       .select(
-    #           "transaccion_id", "cliente_id", "numero_tarjeta", "monto", "moneda",
-    #           "comercio", "categoria_comercio", "canal", "pais", "region", "fecha",
-    #           "es_fraude", "segmento", "antiguedad_meses", "score_crediticio",
-    #           "_archivo_origen",
-    #       )
-    # )
-    raise NotImplementedError("Completa silver_transacciones — ver la solución en el guía")
+    return (
+        tx.dropDuplicates(["transaccion_id"])               # una transacción, una fila
+        .join(clientes, "cliente_id", "left")               # trae segmento, score, etc.
+        .withColumn("fecha", F.to_timestamp("fecha"))       # ← el pendiente del M1/M2: texto → timestamp
+        .select(
+            "transaccion_id", "cliente_id", "numero_tarjeta", "monto", "moneda",
+            "comercio", "categoria_comercio", "canal", "pais", "region", "fecha",
+            "es_fraude", "segmento", "antiguedad_meses", "score_crediticio",
+            "_archivo_origen",
+        )
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 📝 TU TURNO 2 · CAPA GOLD
+# CAPA GOLD — el dato se vuelve ÚTIL para el negocio
 #
-# Declara gold_riesgo_diario: silver agregada por día × región × categoría.
-# Es una vista materializada (recalcula el agregado), no un stream.
-#
-# Métricas por grupo:
-#   total_transacciones · monto_total · transacciones_fraude · monto_fraude
-#   tasa_fraude (fraudes/total) · ticket_promedio (monto_total/total)
+# gold_riesgo_diario = silver agregada por día × región × categoría de comercio.
+# Es una MATERIALIZED VIEW: recalcula el agregado para reflejar el estado actual (no es un
+# stream). Lee de silver con dlt.read() → gold depende de silver en el DAG.
+# Responde la pregunta del área de riesgo: «¿cuánto fraude hubo, por región y categoría,
+# cada día?».
 # ═══════════════════════════════════════════════════════════════════════════
 
 
@@ -167,21 +158,18 @@ def silver_transacciones():
 def gold_riesgo_diario():
     s = dlt.read("silver_transacciones")
 
-    # 📝 COMPLETA: agrupa por fecha (solo el día), region y categoria_comercio.
-    #
-    # return (
-    #     s.withColumn("dia", F.to_date("fecha"))
-    #      .groupBy("dia", "region", "categoria_comercio")
-    #      .agg(
-    #          F.count("*").alias("total_transacciones"),
-    #          F.round(F.sum("monto"), 0).alias("monto_total"),
-    #          F.sum(F.when(F.col("es_fraude"), 1).otherwise(0)).alias("transacciones_fraude"),
-    #          F.round(F.sum(F.when(F.col("es_fraude"), F.col("monto")).otherwise(0)), 0)
-    #              .alias("monto_fraude"),
-    #      )
-    #      .withColumn("tasa_fraude",
-    #                  F.round(F.col("transacciones_fraude") / F.col("total_transacciones"), 4))
-    #      .withColumn("ticket_promedio",
-    #                  F.round(F.col("monto_total") / F.col("total_transacciones"), 0))
-    # )
-    raise NotImplementedError("Completa gold_riesgo_diario — ver la solución en el guía")
+    return (
+        s.withColumn("dia", F.to_date("fecha"))             # agrupa por día (sin la hora)
+        .groupBy("dia", "region", "categoria_comercio")
+        .agg(
+            F.count("*").alias("total_transacciones"),
+            F.round(F.sum("monto"), 0).alias("monto_total"),
+            F.sum(F.when(F.col("es_fraude"), 1).otherwise(0)).alias("transacciones_fraude"),
+            F.round(F.sum(F.when(F.col("es_fraude"), F.col("monto")).otherwise(0)), 0)
+                .alias("monto_fraude"),
+        )
+        .withColumn("tasa_fraude",
+                    F.round(F.col("transacciones_fraude") / F.col("total_transacciones"), 4))
+        .withColumn("ticket_promedio",
+                    F.round(F.col("monto_total") / F.col("total_transacciones"), 0))
+    )

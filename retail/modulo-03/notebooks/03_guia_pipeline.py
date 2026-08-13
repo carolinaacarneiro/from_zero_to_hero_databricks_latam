@@ -7,8 +7,10 @@
 # MAGIC pipeline vive en el archivo **`pipeline_retail.py`** (al lado de este notebook).
 # MAGIC
 # MAGIC ## Cómo trabajar
-# MAGIC - Este notebook es la **guía**: lees acá, editas el pipeline allá, y lanzas desde la UI.
-# MAGIC - Donde dice **📝 TU TURNO**, editas `pipeline_retail.py`.
+# MAGIC - **El código del pipeline ya está completo** (`pipeline_retail.py`). No editas nada.
+# MAGIC - El foco de hoy es **entender**: leer el código, entender las **expectativas de
+# MAGIC   calidad**, crear el pipeline en la UI, correrlo y leer el DAG y el panel de calidad.
+# MAGIC - Este notebook es la **guía**: lees acá y sigues los pasos en la UI del pipeline.
 # MAGIC - 🙋 Trabado más de 3 minutos: levanta la mano.
 # MAGIC
 # MAGIC ## De dónde venimos
@@ -65,137 +67,141 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 1 · Entiende lo que ya está hecho
+# MAGIC # Paso 1 · Lee el código del pipeline (ya está completo)
 # MAGIC
-# MAGIC Abre **`pipeline_retail.py`** (en la misma carpeta). Fíjate en tres cosas:
+# MAGIC Abre **`pipeline_retail.py`** (en la misma carpeta) y léelo de arriba a abajo. **No hay
+# MAGIC nada que editar** — el objetivo es *entender* cómo se declara un pipeline. Cuatro cosas:
 # MAGIC
-# MAGIC 1. **Las tres bronze `bronze_pl_*` ya están declaradas** — el pipeline las crea desde los
-# MAGIC    archivos crudos. Se llaman `bronze_pl_*` para no chocar con la bronze que hiciste a
-# MAGIC    mano en el M2.
-# MAGIC 2. **No hay ningún orden escrito.** Cada `@dlt.table` dice qué produce y de quién lee
-# MAGIC    (`dlt.read` / `dlt.read_stream`). La plataforma arma el DAG con eso.
-# MAGIC 3. **`silver_ventas` y `gold_ventas_diarias` están a medias** — son tus dos TODOs. Las
-# MAGIC    otras dos gold (`gold_ventas_producto`, `gold_inventario_estado`) **ya están resueltas**
-# MAGIC    porque alimentan el dashboard del Módulo 7.
+# MAGIC 1. **Las tres bronze `bronze_pl_*`** — el pipeline las crea desde los archivos crudos con
+# MAGIC    Auto Loader (`cloudFiles`). Se llaman `bronze_pl_*` para no chocar con la bronze que
+# MAGIC    hiciste a mano en el M2.
+# MAGIC 2. **`silver_ventas`** — limpia: deduplica, une con productos y **tipa `fecha` de texto
+# MAGIC    a timestamp** (el pendiente del M1/M2). Lleva 3 expectativas (Paso 2).
+# MAGIC 3. **Tres gold** — `gold_ventas_diarias` (la serie para pronosticar), `gold_ventas_producto`
+# MAGIC    (ranking de productos) y `gold_inventario_estado` (qué reabastecer).
+# MAGIC 4. **No hay ningún orden escrito.** Cada `@dlt.table` dice qué produce y de quién lee
+# MAGIC    (`dlt.read` / `dlt.read_stream`). La plataforma **deduce el DAG** de eso.
 # MAGIC
+# MAGIC | Símbolo en el código | Qué significa |
+# MAGIC |---|---|
 # MAGIC | `@dlt.table` | declara una tabla del pipeline |
 # MAGIC | `dlt.read("x")` | lee la tabla `x` **completa** (batch) — crea dependencia |
 # MAGIC | `dlt.read_stream("x")` | lee `x` de forma **incremental** (streaming) |
-# MAGIC | `@dlt.expect...` | una regla de calidad |
+# MAGIC | `@dlt.expect...` | una regla de calidad (expectativa) |
 # MAGIC
-# MAGIC > 🆘 **¿No tienes experiencia o prefieres no escribir el código?** Al lado hay un archivo
-# MAGIC > **`pipeline_retail_RESPUESTA`** con todo resuelto. Puedes adjuntar ESE al pipeline en
-# MAGIC > vez de `pipeline_retail`, y seguir igual desde el paso 4.
+# MAGIC > 💡 Lee con calma silver y gold: son pocas líneas y en ellas está toda la medallion.
+# MAGIC > Lo que más vale entender son las **expectativas** — el siguiente paso es solo sobre eso.
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 1.5 · ¿Qué son las expectativas (*expectations*)?
+# MAGIC # Paso 2 · El corazón del módulo: las expectativas (*expectations*)
 # MAGIC
+# MAGIC La parte más importante que hay que entender de silver: las **expectativas de calidad**.
+# MAGIC
+# MAGIC ## Qué son
 # MAGIC Una **expectativa es una regla que cada fila debe cumplir.** La declaras junto a la tabla,
 # MAGIC y el pipeline la revisa **en cada ejecución**, fila por fila. Es la calidad de datos
-# MAGIC escrita como código.
+# MAGIC escrita como código — no un chequeo manual que alguien corre el viernes.
+# MAGIC
+# MAGIC Una expectativa tiene tres partes:
 # MAGIC
 # MAGIC ```python
-# MAGIC @dlt.expect_or_drop( "cantidad_positiva",  "cantidad > 0" )
+# MAGIC @dlt.expect_or_drop( "cantidad_positiva",   "cantidad > 0" )
 # MAGIC #    │                 │                    │
-# MAGIC #    acción            nombre               condición (SQL que debe ser verdadera)
+# MAGIC #    acción            nombre             condición (SQL que debe ser verdadera)
 # MAGIC ```
 # MAGIC
 # MAGIC ## Los tres tipos — la diferencia es qué pasa cuando una fila NO cumple
 # MAGIC
 # MAGIC | Decorador | Si la fila no cumple… | Cuándo usarlo |
 # MAGIC |---|---|---|
-# MAGIC | `@dlt.expect` | **Deja pasar la fila**, pero la cuenta y avisa | Vigilar algo sin perder datos |
-# MAGIC | `@dlt.expect_or_drop` | **Descarta esa fila** | La fila es inservible pero no crítica |
+# MAGIC | `@dlt.expect` | **Deja pasar la fila**, pero la cuenta y avisa | Quieres vigilar algo sin perder datos |
+# MAGIC | `@dlt.expect_or_drop` | **Descarta esa fila** (no entra a la tabla) | La fila es inservible pero no crítica |
 # MAGIC | `@dlt.expect_or_fail` | **Detiene el pipeline entero** | Si esto falla, nada debe continuar |
 # MAGIC
-# MAGIC Van **encima de la función** de la tabla, como decoradores. Las tres de silver ya vienen
-# MAGIC escritas en `pipeline_retail.py`:
+# MAGIC ## Cómo se declaran
+# MAGIC Van **encima de la función** de la tabla, como decoradores. Puedes poner varias:
+# MAGIC
+# MAGIC ```python
+# MAGIC @dlt.table(name="silver_ventas")
+# MAGIC @dlt.expect_or_drop("id_valido", "venta_id IS NOT NULL")
+# MAGIC @dlt.expect_or_drop("cantidad_positiva", "cantidad > 0")
+# MAGIC @dlt.expect("monto_positivo", "monto > 0")
+# MAGIC def silver_ventas():
+# MAGIC     ...
+# MAGIC ```
+# MAGIC
+# MAGIC La **condición** es SQL que debe dar verdadero para una fila buena. `cantidad > 0` significa
+# MAGIC *«espero que la cantidad sea positiva»*; la fila que no lo cumpla recibe la acción del
+# MAGIC decorador.
+# MAGIC
+# MAGIC > 💡 **La decisión de diseño del módulo** es elegir la acción correcta para cada regla:
+# MAGIC > ¿esta condición amerita **descartar** la fila, solo **avisar**, o **detener** todo?
+# MAGIC > Es lo que separa una regla útil de una molesta.
+# MAGIC >
+# MAGIC > 📊 Cada expectativa deja una **métrica** en cada corrida: cuántas filas cumplieron y
+# MAGIC > cuántas no. Eso lo verás en el panel de calidad (paso 6) y en el event log.
+# MAGIC
+# MAGIC ## Las 3 expectativas de silver en este pipeline
+# MAGIC
+# MAGIC Búscalas encima de `silver_ventas` en `pipeline_retail.py`:
 # MAGIC
 # MAGIC | Expectativa | Acción | Por qué |
 # MAGIC |---|---|---|
-# MAGIC | `id_valido` | `expect_or_drop` | Una venta sin id no sirve |
-# MAGIC | `cantidad_positiva` | `expect_or_drop` | Descarta el ~2% inválido que plantamos |
-# MAGIC | `monto_positivo` | `expect` (solo avisa) | Lo vigilamos sin descartar |
+# MAGIC | `id_valido` | `expect_or_drop` | Una venta sin id no sirve para nada |
+# MAGIC | `cantidad_positiva` | `expect_or_drop` | Descarta el ~2% inválido que plantamos en los datos |
+# MAGIC | `monto_positivo` | `expect` (solo avisa) | Queremos vigilarlo, no descartar la fila |
 # MAGIC
 # MAGIC > 💡 **La decisión de diseño:** ¿por qué `cantidad_positiva` descarta pero `monto_positivo`
-# MAGIC > solo avisa? Porque una cantidad ≤ 0 es basura que ensucia los agregados; un monto raro es
-# MAGIC > algo que quieres **saber** sin perder la fila. Esa elección es el corazón del módulo.
+# MAGIC > solo avisa? Una cantidad ≤ 0 es basura que ensucia los agregados de gold; un monto raro
+# MAGIC > es algo que quieres **saber** sin perder la fila. Elegir la acción correcta para cada
+# MAGIC > regla es lo que separa una regla útil de una molesta — y es el corazón del módulo.
+# MAGIC >
+# MAGIC > 📊 En el Paso 6 verás, en el panel de calidad, **cuántas filas** afectó cada una.
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC # Paso 2 · 📝 TU TURNO — declara SILVER
+# MAGIC # Paso 3 · Lee silver y gold en detalle
 # MAGIC
-# MAGIC En `pipeline_retail.py`, completa el cuerpo de **`silver_ventas`**.
+# MAGIC Recorre en `pipeline_retail.py` el cuerpo de las tablas. No hay nada que escribir —
+# MAGIC solo entender qué hace cada línea.
 # MAGIC
-# MAGIC | Paso | Cómo |
+# MAGIC ## `silver_ventas` — el dato se vuelve confiable
+# MAGIC
+# MAGIC | Línea | Qué hace |
 # MAGIC |---|---|
-# MAGIC | Deduplicar | `.dropDuplicates(["venta_id"])` |
-# MAGIC | Unir productos | `.join(productos, "producto_id", "left")` |
-# MAGIC | Tipar la fecha | `.withColumn("fecha", F.to_timestamp("fecha"))` ← el pendiente del M1/M2 |
-# MAGIC | Calcular utilidad | `monto - cantidad * costo_unitario` |
-# MAGIC | Seleccionar columnas | `.select(...)` |
+# MAGIC | `dlt.read_stream("bronze_pl_ventas")` | lee la bronze de forma incremental |
+# MAGIC | `dlt.read("bronze_pl_productos").drop("_datos_rescatados")` | catálogo de productos (se quita la columna de rescatados) |
+# MAGIC | `.dropDuplicates(["venta_id"])` | una venta, una fila |
+# MAGIC | `.join(productos, "producto_id", "left")` | pega categoria, marca, costo a cada venta |
+# MAGIC | `.withColumn("fecha", F.to_timestamp("fecha"))` | **el pendiente del M1/M2**: `fecha` pasa de texto a `timestamp` |
+# MAGIC | `.select(...)` | se queda con las columnas útiles |
 # MAGIC
-# MAGIC > 💡 Tipar `fecha` a `timestamp` no es un detalle: **el pronóstico del Módulo 6 necesita
-# MAGIC > una columna de fecha de verdad** para armar la serie de tiempo. Acá es donde se arregla.
+# MAGIC ## `gold_ventas_diarias` — el dato se vuelve útil
 # MAGIC
-# MAGIC <details>
-# MAGIC <summary>💡 Solución de silver</summary>
+# MAGIC Es una *materialized view*: agrega silver por **día × país × categoría**. Cada métrica
+# MAGIC responde algo del negocio (y es lo que el Módulo 6 le dará a ai_forecast):
 # MAGIC
-# MAGIC <pre>v = dlt.read_stream("bronze_pl_ventas")
-# MAGIC productos = dlt.read("bronze_pl_productos").drop("_datos_rescatados")
-# MAGIC return (
-# MAGIC     v.dropDuplicates(["venta_id"])
-# MAGIC      .join(productos, "producto_id", "left")
-# MAGIC      .withColumn("fecha", F.to_timestamp("fecha"))
-# MAGIC      .withColumn("utilidad",
-# MAGIC                  F.round(F.col("monto") - F.col("cantidad") * F.col("costo_unitario"), 2))
-# MAGIC      .select(
-# MAGIC          "venta_id", "fecha", "producto_id", "nombre_producto", "categoria",
-# MAGIC          "subcategoria", "marca", "pais", "canal", "cantidad", "precio_unitario",
-# MAGIC          "descuento_pct", "monto", "costo_unitario", "utilidad", "_archivo_origen",
-# MAGIC      )
-# MAGIC )</pre>
-# MAGIC </details>
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC # Paso 3 · 📝 TU TURNO — declara GOLD (la serie del pronóstico)
+# MAGIC | Columna | Cálculo | Responde |
+# MAGIC |---|---|---|
+# MAGIC | `unidades` | `sum(cantidad)` | volumen de ventas |
+# MAGIC | `monto` | `sum(monto)` | ingresos totales |
+# MAGIC | `utilidad` | `sum(utilidad)` | ganancia neta |
+# MAGIC | `lineas` | `count(*)` | número de transacciones |
 # MAGIC
-# MAGIC Completa **`gold_ventas_diarias`**: silver agregada por **día × país × categoría**. Esta
-# MAGIC es la tabla que en el Módulo 6 le vas a dar a `ai_forecast`.
+# MAGIC ## Las otras dos gold
 # MAGIC
-# MAGIC | Columna | Cálculo |
-# MAGIC |---|---|
-# MAGIC | `unidades` | `sum(cantidad)` |
-# MAGIC | `monto` | `sum(monto)` |
-# MAGIC | `utilidad` | `sum(utilidad)` |
-# MAGIC | `lineas` | `count(*)` |
+# MAGIC **`gold_ventas_producto`**: agrupa sin tiempo — qué producto se vende más, cuál tiene
+# MAGIC mejor margen, en cuántos países se vende. Alimenta el ranking del dashboard.
 # MAGIC
-# MAGIC > 💡 Usa `F.to_date("fecha")` para agrupar por día (sin la hora). Una serie de tiempo para
-# MAGIC > pronosticar necesita **un valor por día**, no por transacción.
+# MAGIC **`gold_inventario_estado`**: cruza el stock actual con la demanda histórica para
+# MAGIC calcular **días de cobertura** y decidir qué reabastecer. Responde: ¿este producto
+# MAGIC durará 30 días? ¿Lo necesito reponer ahora?
 # MAGIC
-# MAGIC <details>
-# MAGIC <summary>💡 Solución de gold</summary>
-# MAGIC
-# MAGIC <pre>return (
-# MAGIC     s.withColumn("dia", F.to_date("fecha"))
-# MAGIC      .groupBy("dia", "pais", "categoria")
-# MAGIC      .agg(
-# MAGIC          F.sum("cantidad").alias("unidades"),
-# MAGIC          F.round(F.sum("monto"), 2).alias("monto"),
-# MAGIC          F.round(F.sum("utilidad"), 2).alias("utilidad"),
-# MAGIC          F.count("*").alias("lineas"),
-# MAGIC      )
-# MAGIC )</pre>
-# MAGIC </details>
-# MAGIC
-# MAGIC 👀 **Las otras dos gold ya están resueltas** en el archivo (`gold_ventas_producto` y
-# MAGIC `gold_inventario_estado`). Léelas: verás cómo se calcula el margen por producto y los
-# MAGIC **días de cobertura** de stock que usará el dashboard.
+# MAGIC > 💡 Fíjate que **cada gold lee de silver** (`dlt.read("silver_ventas")`) y **silver lee
+# MAGIC > de las bronze**. Esas lecturas son las que arman el DAG — que verás en el Paso 5.
 
 # COMMAND ----------
 
@@ -212,38 +218,48 @@
 # MAGIC ## 4.2 · Pega tu código
 # MAGIC 1. Haz clic en `transformations/my_transformation.py`
 # MAGIC 2. Selecciona todo (`Cmd/Ctrl + A`) y bórralo
-# MAGIC 3. Abre `pipeline_retail.py` (o `pipeline_retail_RESPUESTA.py`), copia **todo** su
-# MAGIC    contenido y pégalo ahí
+# MAGIC 3. Abre `pipeline_retail.py`, copia **todo** su contenido y pégalo ahí
+# MAGIC 4. *(opcional)* renombra el archivo a `pipeline_retail.py` con el menú de los tres puntos
 # MAGIC
-# MAGIC ## 4.3 · No tienes que configurar la ruta
-# MAGIC El código **detecta solo** tu volumen `raw` desde tu usuario. No hace falta tocar Settings.
+# MAGIC > 💡 Las líneas `# Databricks notebook source` y `# MAGIC %md` quedan como comentarios
+# MAGIC > inofensivos. No hace falta quitarlas.
+# MAGIC
+# MAGIC ## 4.3 · Configura el destino (con TUS valores)
+# MAGIC El pipeline **no adivina** dónde trabajas: usa el **Default catalog** y **Default schema**
+# MAGIC que defines en la UI del pipeline. Son los **mismos** catálogo y schema de siempre (los
+# MAGIC del M1/M2), y de ahí el pipeline sabe también dónde está tu volumen `raw`.
 # MAGIC
 # MAGIC ## 4.4 · Elige el destino y ejecuta
-# MAGIC - Arriba, confirma el **catálogo** y **schema** de destino (los tuyos, los del M2). La
-# MAGIC   celda de abajo te dice cuáles son.
+# MAGIC En la UI del pipeline, en **"Default location for data assets"** (botón *Edit catalog and
+# MAGIC schema*):
+# MAGIC - **Default catalog**: tu catálogo.
+# MAGIC - **Default schema**: tu schema.
 # MAGIC - Presiona **Run pipeline** (arriba a la derecha). Tarda 1–2 minutos en arrancar.
+# MAGIC
+# MAGIC > 💡 No necesitas configurar nada más: el pipeline lee ese Default catalog/schema
+# MAGIC > automáticamente. La celda de abajo solo te recuerda qué valores escribir.
 
 # COMMAND ----------
 
-import re
-_usuario = spark.sql("SELECT current_user()").collect()[0][0]
-_schema = "retail_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
-_ocultos = ("system", "samples", "__databricks_internal", "hive_metastore")
-_cat = None
-for c in [r[0] for r in spark.sql("SHOW CATALOGS").collect() if r[0].lower() not in _ocultos]:
-    try:
-        if _schema in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{c}`").collect()]:
-            _cat = c
-            break
-    except Exception:
-        continue
+# ═══ Recordatorio de qué poner en la UI del pipeline (los mismos del M1/M2) ══
+# Campos VACÍOS: tú declaras dónde trabajas. No se infiere nada.
+dbutils.widgets.text("catalogo", "", "1 · Catálogo")
+dbutils.widgets.text("schema",   "", "2 · Schema")
 
-print("En Settings del pipeline, elige como DESTINO:\n")
-print(f"  Default catalog : {_cat}")
-print(f"  Default schema  : {_schema}")
-print()
-print("La ruta de los archivos se detecta sola — no tienes que configurar nada más.")
-print("Presiona 'Run pipeline' cuando esté listo.")
+catalogo = dbutils.widgets.get("catalogo").strip()
+schema = dbutils.widgets.get("schema").strip()
+
+if not catalogo or not schema:
+    raise Exception(
+        "\n❌ Escribe tu CATÁLOGO y tu SCHEMA en los dos campos de arriba (los mismos que "
+        "usaste en el M1/M2) y vuelve a correr esta celda.\n"
+    )
+
+print("En la UI del pipeline → 'Default location for data assets', pon:\n")
+print(f"     Default catalog : {catalogo}")
+print(f"     Default schema  : {schema}")
+print("\nEso es todo. El pipeline usa ese destino para escribir y para encontrar tu volumen")
+print("raw. Presiona 'Run pipeline'.")
 
 # COMMAND ----------
 
@@ -295,19 +311,16 @@ print("Presiona 'Run pipeline' cuando esté listo.")
 
 # COMMAND ----------
 
-import re
-_usuario = spark.sql("SELECT current_user()").collect()[0][0]
-_schema = "retail_" + re.sub(r"[^a-z0-9_]", "_", _usuario.split("@")[0].lower())
-_cat = None
-for c in [r[0] for r in spark.sql("SHOW CATALOGS").collect()
-          if r[0].lower() not in ("system", "samples", "__databricks_internal", "hive_metastore")]:
-    try:
-        if _schema in [r[0] for r in spark.sql(f"SHOW SCHEMAS IN `{c}`").collect()]:
-            _cat = c
-            break
-    except Exception:
-        continue
-RAW = f"/Volumes/{_cat}/{_schema}/raw"
+# Reusa el catálogo/schema que declaraste en el Paso 4. Si corriste esta celda suelta,
+# vuelve a correr la celda de declaración (Paso 4.3) primero.
+try:
+    catalogo, schema
+except NameError:
+    raise Exception(
+        "\n❌ Primero declara tu catálogo y schema en la celda del Paso 4.3 "
+        "(y luego vuelve aquí).\n"
+    )
+RAW = f"/Volumes/{catalogo}/{schema}/raw"
 
 from pyspark.sql import functions as F
 malas = (spark.range(500)
@@ -346,11 +359,18 @@ print("   Cuando termine, mira 'cantidad_positiva' en el panel de calidad: desca
 
 # MAGIC %md
 # MAGIC # Paso 8 · Verifica tu checkpoint
-# MAGIC Ejecuta esta celda (el catálogo/schema se detectan solos).
+# MAGIC
+# MAGIC Ejecuta esta celda. Usa el catálogo y schema que declaraste en el Paso 4.
 
 # COMMAND ----------
 
-spark.sql(f"USE `{_cat}`.`{_schema}`")
+try:
+    catalogo, schema
+except NameError:
+    raise Exception(
+        "\n❌ Primero declara tu catálogo y schema en la celda del Paso 4 (y vuelve aquí).\n"
+    )
+spark.sql(f"USE `{catalogo}`.`{schema}`")
 resultados = []
 
 try:
@@ -381,16 +401,16 @@ print("=" * 68)
 if all(ok for ok, _ in resultados):
     print("""
   🎉 ¡Módulo 3 completo!
-    · Declaraste silver y gold — la plataforma resolvió el orden
-    · Definiste reglas de calidad y viste cuántas filas afectaron
+    · Entendiste un pipeline declarativo — la plataforma resolvió el orden (el DAG)
+    · Entendiste las 3 expectativas de calidad y viste cuántas filas afectaron
     · Rompiste algo a propósito y viste subir los descartes
 
-  👉 En el Módulo 4 vas a gobernar estas tablas: quién ve qué filas
-     (por país), qué columnas se enmascaran (el costo), y de dónde
-     viene cada dato.
+  👉 En el Módulo 4 vas a gobernar estas tablas: quién ve qué filas (por país),
+     qué columnas se enmascaran (el costo), y de dónde viene cada dato.
 """)
 else:
-    print("  ⚠️  Revisa los ❌. Lo más común: el pipeline no terminó, o falta completar un TODO.")
+    print("  ⚠️  Revisa los ❌. Lo más común: el pipeline no terminó, o el destino")
+    print("      (Default catalog/schema) no es el mismo donde generaste los datos.")
 
 # COMMAND ----------
 
